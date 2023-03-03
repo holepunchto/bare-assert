@@ -8,4 +8,4 @@ npm i @pearjs/assert
 
 ## License
 
-MIT
+Apache-2.0

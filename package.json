@@ -1,5 +1,5 @@
 {
-  "name": "@pearjs/assert",
+  "name": "bare-assert",
   "version": "1.0.0",
   "description": "Assertion library for JavaScript",
   "main": "index.js",
@@ -7,18 +7,18 @@
     "index.js"
   ],
   "scripts": {
-    "test": "standard && pear test.js"
+    "test": "standard && bare test.js"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/holepunchto/pearjs-assert.git"
+    "url": "https://github.com/holepunchto/bare-assert.git"
   },
   "author": "Holepunch",
   "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/holepunchto/pearjs-assert/issues"
+    "url": "https://github.com/holepunchto/bare-assert/issues"
   },
-  "homepage": "https://github.com/holepunchto/pearjs-assert#readme",
+  "homepage": "https://github.com/holepunchto/bare-assert#readme",
   "devDependencies": {
     "brittle": "^3.1.1",
     "standard": "^17.0.0"

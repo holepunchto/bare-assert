@@ -1,9 +1,9 @@
-# @pearjs/assert
+# bare-assert
 
 Assertion library for JavaScript.
 
 ```
-npm i @pearjs/assert
+npm i bare-assert
 ```
 
 ## License

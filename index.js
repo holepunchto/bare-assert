@@ -1,10 +1,10 @@
 class AssertionError extends Error {
-  constructor(opts = {}) {
+  constructor (opts = {}) {
     const {
       message = null,
       actual,
       expected,
-      operator,
+      operator
     } = opts
 
     super(message)

@@ -2,9 +2,15 @@
   "name": "bare-assert",
   "version": "1.0.1",
   "description": "Assertion library for JavaScript",
-  "main": "index.js",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
   "files": [
-    "index.js"
+    "index.js",
+    "index.d.ts"
   ],
   "scripts": {
     "test": "standard && bare test.js"

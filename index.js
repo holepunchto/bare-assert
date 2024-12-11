@@ -1,11 +1,6 @@
 class AssertionError extends Error {
-  constructor (opts = {}) {
-    const {
-      message = null,
-      actual,
-      expected,
-      operator
-    } = opts
+  constructor(opts = {}) {
+    const { message = null, actual, expected, operator } = opts
 
     super(message)
 
@@ -15,7 +10,7 @@ class AssertionError extends Error {
   }
 }
 
-module.exports = exports = function assert (value, message) {
+module.exports = exports = function assert(value, message) {
   if (value) return
 
   if (message instanceof Error) throw message

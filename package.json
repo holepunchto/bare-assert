@@ -26,6 +26,9 @@
     "url": "https://github.com/holepunchto/bare-assert/issues"
   },
   "homepage": "https://github.com/holepunchto/bare-assert#readme",
+  "dependencies": {
+    "bare-inspect": "^3.1.2"
+  },
   "devDependencies": {
     "brittle": "^3.1.1",
     "prettier": "^3.4.2",

@@ -1,6 +1,12 @@
+const inspect = require('bare-inspect')
+
 class AssertionError extends Error {
   constructor(opts = {}) {
-    const { message = null, actual, expected, operator } = opts
+    let { message = null, actual, expected, operator } = opts
+
+    if (message === null) {
+      message = `${inspect(actual)} ${operator} ${inspect(expected)}`
+    }
 
     super(message)
 
@@ -8,18 +14,76 @@ class AssertionError extends Error {
     this.expected = expected
     this.operator = operator
   }
+
+  get name() {
+    return 'AssertionError'
+  }
+
+  get code() {
+    'ASSERTION'
+  }
 }
 
-module.exports = exports = function assert(value, message) {
-  if (value) return
+function assertFail(opts, fn) {
+  if (opts.message instanceof Error) throw opts.message
 
-  if (message instanceof Error) throw message
+  const err = new AssertionError(opts)
 
-  const err = new AssertionError({ message })
-
-  if (Error.captureStackTrace) Error.captureStackTrace(err, assert)
+  if (Error.captureStackTrace) Error.captureStackTrace(err, fn)
 
   throw err
 }
 
+module.exports = exports = function assert(actual, message) {
+  if (actual) return
+
+  assertFail({ message, actual, expected: true, operator: '==' }, assert)
+}
+
 exports.AssertionError = AssertionError
+
+exports.fail = function fail(message) {
+  if (message === undefined) message = 'Failed'
+
+  assertFail({ message, operator: 'fail' }, fail)
+}
+
+exports.ok = function ok(actual, message) {
+  if (actual) return
+
+  assertFail({ message, actual, expected: true, operator: '==' }, ok)
+}
+
+exports.equal = function equal(actual, expected, message) {
+  if (actual == expected || (actual !== actual && expected !== expected)) {
+    return
+  }
+
+  assertFail({ message, actual, expected, operator: '==' }, equal)
+}
+
+exports.notEqual = function notEqual(actual, expected, message) {
+  if (actual != expected && (actual === actual || expected === expected)) {
+    return
+  }
+
+  assertFail({ message, actual, expected, operator: '!=' }, notEqual)
+}
+
+exports.strictEqual = function strictEqual(actual, expected, message) {
+  if (Object.is(actual, expected)) return
+
+  assertFail(
+    { message, actual, expected, operator: 'strictEqual' },
+    strictEqual
+  )
+}
+
+exports.notStrictEqual = function notStrictEqual(actual, expected, message) {
+  if (!Object.is(actual, expected)) return
+
+  assertFail(
+    { message, actual, expected, operator: 'notStrictEqual' },
+    notStrictEqual
+  )
+}

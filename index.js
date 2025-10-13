@@ -73,17 +73,11 @@ exports.notEqual = function notEqual(actual, expected, message) {
 exports.strictEqual = function strictEqual(actual, expected, message) {
   if (Object.is(actual, expected)) return
 
-  assertFail(
-    { message, actual, expected, operator: 'strictEqual' },
-    strictEqual
-  )
+  assertFail({ message, actual, expected, operator: 'strictEqual' }, strictEqual)
 }
 
 exports.notStrictEqual = function notStrictEqual(actual, expected, message) {
   if (!Object.is(actual, expected)) return
 
-  assertFail(
-    { message, actual, expected, operator: 'notStrictEqual' },
-    notStrictEqual
-  )
+  assertFail({ message, actual, expected, operator: 'notStrictEqual' }, notStrictEqual)
 }

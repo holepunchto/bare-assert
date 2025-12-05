@@ -54,6 +54,12 @@ exports.ok = function ok(actual, message) {
   assertFail({ message, actual, expected: true, operator: '==' }, ok)
 }
 
+exports.notOk = function ok(actual, message) {
+  if (!actual) return
+
+  assertFail({ message, actual, expected: false, operator: '==' }, ok)
+}
+
 exports.equal = function equal(actual, expected, message) {
   if (actual == expected || (actual !== actual && expected !== expected)) {
     return

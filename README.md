@@ -69,23 +69,6 @@ Throws an `AssertionError` unless `actual` and `expected` are the same value, as
 
 Throws an `AssertionError` unless `actual` and `expected` are not the same value, as determined by `Object.is()`.
 
-## Node.js Compatibility
-
-Currently unsupported:
-
-- `assert.Assert`
-- `assert.deepStrictEqual`
-- `assert.doesNotMatch`
-- `assert.doesNotReject`
-- `assert.doesNotThrow`
-- `assert.fail`
-- `assert.ifError`
-- `assert.match`
-- `assert.notDeepStrictEqual`
-- `assert.rejects`
-- `assert.throws`
-- `assert.partialDeepStrictEqual`
-
 ## License
 
 Apache-2.0

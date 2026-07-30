@@ -69,6 +69,18 @@ Throws an `AssertionError` unless `actual` and `expected` are the same value, as
 
 Throws an `AssertionError` unless `actual` and `expected` are not the same value, as determined by `Object.is()`.
 
+#### `assert.match(actual, regexp[, message])`
+
+Throws an `AssertionError` unless `actual` is a string that matches `regexp`.
+
+#### `assert.doesNotMatch(actual, regexp[, message])`
+
+Throws an `AssertionError` unless `actual` is a string that does not match `regexp`.
+
+#### `assert.ifError(actual)`
+
+Throws an `AssertionError` unless `actual` is `undefined` or `null`.
+
 ## License
 
 Apache-2.0

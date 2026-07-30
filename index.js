@@ -87,3 +87,11 @@ exports.notStrictEqual = function notStrictEqual(actual, expected, message) {
 
   assertFail({ message, actual, expected, operator: 'notStrictEqual' }, notStrictEqual)
 }
+
+exports.ifError = function ifError(actual) {
+  if (actual === null || actual === undefined) return
+
+  const message = `ifError got ${inspect(actual)}`
+
+  assertFail({ message, actual, operator: 'ifError' }, ifError)
+}

@@ -41,3 +41,10 @@ test('notStrictEqual', (t) => {
   t.execution(() => assert.notStrictEqual(1, '1'))
   t.exception(() => assert.notStrictEqual(1, 1, 'should fail'), /should fail/)
 })
+
+test('ifError', (t) => {
+  t.execution(() => assert.ifError(null))
+  t.execution(() => assert.ifError(undefined))
+
+  t.exception(() => assert.ifError('error'))
+})

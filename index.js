@@ -88,6 +88,18 @@ exports.notStrictEqual = function notStrictEqual(actual, expected, message) {
   assertFail({ message, actual, expected, operator: 'notStrictEqual' }, notStrictEqual)
 }
 
+exports.match = function match(actual, regexp, message) {
+  if (typeof actual === 'string' && actual.match(regexp) !== null) return
+
+  assertFail({ message, actual, expected: regexp, operator: 'match' }, match)
+}
+
+exports.doesNotMatch = function doesNotMatch(actual, regexp, message) {
+  if (typeof actual === 'string' && actual.match(regexp) === null) return
+
+  assertFail({ message, actual, expected: regexp, operator: 'doesNotMatch' }, doesNotMatch)
+}
+
 exports.ifError = function ifError(actual) {
   if (actual === null || actual === undefined) return
 

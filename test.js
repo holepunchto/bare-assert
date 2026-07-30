@@ -42,9 +42,20 @@ test('notStrictEqual', (t) => {
   t.exception(() => assert.notStrictEqual(1, 1, 'should fail'), /should fail/)
 })
 
+test('match', (t) => {
+  t.execution(() => assert.match('should pass', /pass/))
+  t.exception(() => assert.match('should not pass', /fail/, 'should fail'), /should fail/)
+  t.exception(() => assert.match(1, /fail/, 'should fail'), /should fail/)
+})
+
+test('doesNotMatch', (t) => {
+  t.execution(() => assert.doesNotMatch('should not fail', /pass/))
+  t.exception(() => assert.doesNotMatch('should fail', /fail/, 'should fail'), /should fail/)
+  t.exception(() => assert.doesNotMatch(1, /fail/, 'should fail'), /should fail/)
+})
+
 test('ifError', (t) => {
   t.execution(() => assert.ifError(null))
   t.execution(() => assert.ifError(undefined))
-
   t.exception(() => assert.ifError('error'))
 })

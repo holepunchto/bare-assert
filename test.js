@@ -187,7 +187,7 @@ test('deepStrictEqual, functions', (t) => {
   )
 })
 
-test.skip('deepStrictEqual, recursive self-references', (t) => {
+test('deepStrictEqual, recursive self-references', (t) => {
   const foo = {}
   foo.prop = foo
 
@@ -197,7 +197,7 @@ test.skip('deepStrictEqual, recursive self-references', (t) => {
   t.execution(() => assert.deepStrictEqual(foo, bar))
 })
 
-test.skip('deepStrictEqual, recursive mutual references', (t) => {
+test('deepStrictEqual, recursive mutual references', (t) => {
   const foo = { prop: null }
   const bar = { prop: foo }
   foo.prop = bar
@@ -205,7 +205,7 @@ test.skip('deepStrictEqual, recursive mutual references', (t) => {
   t.execution(() => assert.deepStrictEqual(foo, bar))
 })
 
-test.skip('deepStrictEqual, recursive lists', (t) => {
+test('deepStrictEqual, recursive lists', (t) => {
   const foo = []
   const bar = [foo]
   foo[0] = bar

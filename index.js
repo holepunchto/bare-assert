@@ -1,5 +1,6 @@
 const inspect = require('bare-inspect')
 const getType = require('bare-type')
+const MemoizeMap = require('./lib/memoize-map')
 
 class AssertionError extends Error {
   constructor(opts = {}) {
@@ -110,18 +111,22 @@ exports.ifError = function ifError(actual) {
 }
 
 exports.deepStrictEqual = function deepStrictEqual(actual, expected, message) {
-  if (deepStrictEqualValue(actual, expected)) return
+  const memo = new MemoizeMap()
+
+  if (deepStrictEqualValue(actual, expected, memo)) return
 
   assertFail({ message, actual, expected, operator: 'deepStrictEqual' }, deepStrictEqual)
 }
 
 exports.notDeepStrictEqual = function notDeepStrictEqual(actual, expected, message) {
-  if (!deepStrictEqualValue(actual, expected)) return
+  const memo = new MemoizeMap()
+
+  if (!deepStrictEqualValue(actual, expected, memo)) return
 
   assertFail({ message, actual, expected, operator: 'notDeepStrictEqual' }, notDeepStrictEqual)
 }
 
-function deepStrictEqualValue(a, b) {
+function deepStrictEqualValue(a, b, memo) {
   const type = getType(a)
 
   if (!type.isObject() || !getType(b).isObject()) return Object.is(a, b)
@@ -139,33 +144,47 @@ function deepStrictEqualValue(a, b) {
 
   if (type.isWeakMap() || type.isWeakSet() || type.isPromise()) return a === b
 
-  if (type.isArray()) return deepStrictEqualArray(a, b)
-  if (type.isMap()) return deepStrictEqualMap(a, b)
-  if (type.isSet()) return deepStrictEqualSet(a, b)
   if (type.isRegExp()) return deepStrictEqualRegexp(a, b)
-  if (type.isError()) return deepStrictEqualError(a, b)
 
-  return deepStrictEqualObject(a, b)
+  const memoizedResultA = memo.get(a, b)
+  if (memoizedResultA !== null) return memoizedResultA
+
+  const memoizedResultB = memo.get(b, a)
+  if (memoizedResultB !== null) return memoizedResultB
+
+  // Temporary value to break circular recursion
+  memo.set(a, b, true)
+
+  let result
+  if (type.isError()) result = deepStrictEqualError(a, b, memo)
+  else if (type.isArray()) result = deepStrictEqualArray(a, b, memo)
+  else if (type.isMap()) result = deepStrictEqualMap(a, b, memo)
+  else if (type.isSet()) result = deepStrictEqualSet(a, b, memo)
+  else result = deepStrictEqualObject(a, b, memo)
+
+  memo.set(a, b, result)
+
+  return result
 }
 
-function deepStrictEqualArray(a, b) {
+function deepStrictEqualArray(a, b, memo) {
   if (a.length !== b.length) return false
 
   for (let i = 0; i < a.length; i++) {
-    if (!deepStrictEqualValue(a[i], b[i])) return false
+    if (!deepStrictEqualValue(a[i], b[i], memo)) return false
   }
 
   return true
 }
 
-function deepStrictEqualMap(a, b) {
+function deepStrictEqualMap(a, b, memo) {
   if (a.size !== b.size) return false
 
   const nonPrimitiveKeysEntriesFromA = []
 
   for (const [key, value] of a) {
     if (getType(key).isObject()) nonPrimitiveKeysEntriesFromA.push([key, value])
-    else if (!b.has(key) || !deepStrictEqualValue(value, b.get(key))) return false
+    else if (!b.has(key) || !deepStrictEqualValue(value, b.get(key), memo)) return false
   }
 
   if (nonPrimitiveKeysEntriesFromA.length > 0) {
@@ -185,7 +204,7 @@ function deepStrictEqualMap(a, b) {
       for (let i = 0; i < nonPrimitiveKeysEntriesFromB.length; i++) {
         const [keyB, valueB] = nonPrimitiveKeysEntriesFromB[i]
 
-        if (deepStrictEqualValue(keyA, keyB) && deepStrictEqualValue(valueA, valueB)) {
+        if (deepStrictEqualValue(keyA, keyB, memo) && deepStrictEqualValue(valueA, valueB, memo)) {
           nonPrimitiveKeysEntriesFromB.splice(i, 1)
           found = true
           break
@@ -199,7 +218,7 @@ function deepStrictEqualMap(a, b) {
   return true
 }
 
-function deepStrictEqualSet(a, b) {
+function deepStrictEqualSet(a, b, memo) {
   if (a.size !== b.size) return false
 
   const nonPrimitiveItemsFromA = []
@@ -224,7 +243,7 @@ function deepStrictEqualSet(a, b) {
       for (let i = 0; i < nonPrimitiveItemsFromB.length; i++) {
         const itemB = nonPrimitiveItemsFromB[i]
 
-        if (deepStrictEqualValue(itemA, itemB)) {
+        if (deepStrictEqualValue(itemA, itemB, memo)) {
           nonPrimitiveItemsFromB.splice(i, 1)
           found = true
           break
@@ -244,18 +263,20 @@ function deepStrictEqualRegexp(a, b) {
   return a.lastIndex === b.lastIndex && a.flags === b.flags && a.source === b.source
 }
 
-function deepStrictEqualError(a, b) {
-  return deepStrictEqualValue(a.name, b.name) && deepStrictEqualValue(a.message, b.message)
+function deepStrictEqualError(a, b, memo) {
+  return (
+    deepStrictEqualValue(a.name, b.name, memo) && deepStrictEqualValue(a.message, b.message, memo)
+  )
 }
 
-function deepStrictEqualObject(a, b) {
+function deepStrictEqualObject(a, b, memo) {
   const aKeys = [...Object.keys(a), ...Object.getOwnPropertySymbols(a)]
   const bKeys = [...Object.keys(b), ...Object.getOwnPropertySymbols(b)]
 
   if (aKeys.length !== bKeys.length) return false
 
   for (const key of aKeys) {
-    if (!deepStrictEqualValue(a[key], b[key])) return false
+    if (!deepStrictEqualValue(a[key], b[key], memo)) return false
   }
 
   return true

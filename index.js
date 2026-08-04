@@ -180,80 +180,39 @@ function deepStrictEqualArray(a, b, memo) {
 function deepStrictEqualMap(a, b, memo) {
   if (a.size !== b.size) return false
 
-  const nonPrimitiveKeysEntriesFromA = []
-
-  for (const [key, value] of a) {
-    if (getType(key).isObject()) nonPrimitiveKeysEntriesFromA.push([key, value])
-    else if (!b.has(key) || !deepStrictEqualValue(value, b.get(key), memo)) return false
-  }
-
-  if (nonPrimitiveKeysEntriesFromA.length > 0) {
-    const nonPrimitiveKeysEntriesFromB = []
-
-    for (const [key, value] of b) {
-      if (getType(key).isObject()) nonPrimitiveKeysEntriesFromB.push([key, value])
-    }
-
-    if (nonPrimitiveKeysEntriesFromA.length !== nonPrimitiveKeysEntriesFromB.length) {
-      return false
-    }
-
-    for (const [keyA, valueA] of nonPrimitiveKeysEntriesFromA) {
-      let found = false
-
-      for (let i = 0; i < nonPrimitiveKeysEntriesFromB.length; i++) {
-        const [keyB, valueB] = nonPrimitiveKeysEntriesFromB[i]
-
-        if (deepStrictEqualValue(keyA, keyB, memo) && deepStrictEqualValue(valueA, valueB, memo)) {
-          nonPrimitiveKeysEntriesFromB.splice(i, 1)
-          found = true
-          break
-        }
-      }
-
-      if (found === false) return false
-    }
-  }
-
-  return true
+  return deepStrictEqualArrayBruteForceSearch(
+    Array.from(a.entries()),
+    Array.from(b.entries()),
+    memo
+  )
 }
 
 function deepStrictEqualSet(a, b, memo) {
   if (a.size !== b.size) return false
 
-  const nonPrimitiveItemsFromA = []
+  return deepStrictEqualArrayBruteForceSearch(Array.from(a.keys()), Array.from(b.keys()), memo)
+}
 
-  for (const item of a) {
-    if (getType(item).isObject()) nonPrimitiveItemsFromA.push(item)
-    else if (!b.has(item)) return false
-  }
+function deepStrictEqualArrayBruteForceSearch(a, b, memo) {
+  if (a.length !== b.length) return false
 
-  if (nonPrimitiveItemsFromA.length > 0) {
-    const nonPrimitiveItemsFromB = []
+  for (let i = 0; i < a.length; i++) {
+    let found = false
+    const itemA = a[i]
 
-    for (const item of b) {
-      if (getType(item).isObject()) nonPrimitiveItemsFromB.push(item)
-    }
+    for (let j = 0; j < b.length; j++) {
+      const itemB = b[j]
 
-    if (nonPrimitiveItemsFromA.length !== nonPrimitiveItemsFromB.length) return false
+      if (deepStrictEqualValue(itemA, itemB, memo)) {
+        found = true
 
-    for (const itemA of nonPrimitiveItemsFromA) {
-      let found = false
+        b.splice(j, 1)
 
-      for (let i = 0; i < nonPrimitiveItemsFromB.length; i++) {
-        const itemB = nonPrimitiveItemsFromB[i]
-
-        if (deepStrictEqualValue(itemA, itemB, memo)) {
-          nonPrimitiveItemsFromB.splice(i, 1)
-          found = true
-          break
-        }
+        break
       }
-
-      if (found === false) return false
     }
 
-    return nonPrimitiveItemsFromB.length === 0
+    if (found === false) return false
   }
 
   return true

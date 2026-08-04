@@ -69,6 +69,14 @@ Throws an `AssertionError` unless `actual` and `expected` are the same value, as
 
 Throws an `AssertionError` unless `actual` and `expected` are not the same value, as determined by `Object.is()`.
 
+#### `assert.deepStrictEqual(actual, expected[, message])`
+
+Throws an `AssertionError` unless `actual` and `expected` are the same value, recursively.
+
+#### `assert.notDeepStrictEqual(actual, expected[, message])`
+
+Throws an `AssertionError` unless `actual` and `expected` are not the same value, recursively.
+
 #### `assert.match(actual, regexp[, message])`
 
 Throws an `AssertionError` unless `actual` is a string that matches `regexp`.

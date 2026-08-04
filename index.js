@@ -111,17 +111,13 @@ exports.ifError = function ifError(actual) {
 }
 
 exports.deepStrictEqual = function deepStrictEqual(actual, expected, message) {
-  const memo = new MemoizeMap()
-
-  if (deepStrictEqualValue(actual, expected, memo)) return
+  if (deepStrictEqualValue(actual, expected, new MemoizeMap())) return
 
   assertFail({ message, actual, expected, operator: 'deepStrictEqual' }, deepStrictEqual)
 }
 
 exports.notDeepStrictEqual = function notDeepStrictEqual(actual, expected, message) {
-  const memo = new MemoizeMap()
-
-  if (!deepStrictEqualValue(actual, expected, memo)) return
+  if (!deepStrictEqualValue(actual, expected, new MemoizeMap())) return
 
   assertFail({ message, actual, expected, operator: 'notDeepStrictEqual' }, notDeepStrictEqual)
 }

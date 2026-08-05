@@ -179,7 +179,7 @@ test('deepStrictEqual, object wrappers', (t) => {
   )
 })
 
-test('deepStrictEqual, functions', (t) => {
+test('deepStrictEqual, errors', (t) => {
   t.execution(() => assert.deepStrictEqual(new Error('foo'), new Error('foo')))
   t.exception(
     () => assert.deepStrictEqual(new Error('foo'), new Error('bar'), 'should fail'),

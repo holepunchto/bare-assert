@@ -111,42 +111,44 @@ exports.ifError = function ifError(actual) {
 }
 
 exports.deepStrictEqual = function deepStrictEqual(actual, expected, message) {
-  if (deepStrictEqualValue(actual, expected, new MemoizeMap())) return
+  if (deepStrictEqualValue(actual, expected)) return
 
   assertFail({ message, actual, expected, operator: 'deepStrictEqual' }, deepStrictEqual)
 }
 
 exports.notDeepStrictEqual = function notDeepStrictEqual(actual, expected, message) {
-  if (!deepStrictEqualValue(actual, expected, new MemoizeMap())) return
+  if (!deepStrictEqualValue(actual, expected)) return
 
   assertFail({ message, actual, expected, operator: 'notDeepStrictEqual' }, notDeepStrictEqual)
 }
 
-function deepStrictEqualValue(a, b, memo) {
+function deepStrictEqualValue(a, b, memo = new MemoizeMap()) {
   const type = getType(a)
 
   if (!type.isObject() || !getType(b).isObject()) return Object.is(a, b)
 
-  if (Object.getPrototypeOf(a) !== Object.getPrototypeOf(b)) return false
+  const prototype = Object.getPrototypeOf(a)
 
-  const isWrapped = [
-    String.prototype,
-    Number.prototype,
-    Boolean.prototype,
-    Date.prototype
-  ].includes(Object.getPrototypeOf(a))
+  if (prototype !== Object.getPrototypeOf(b)) return false
 
-  if (isWrapped) return deepStrictEqualValue(a.valueOf(), b.valueOf())
+  if (
+    prototype === String.prototype ||
+    prototype === Number.prototype ||
+    prototype === Boolean.prototype ||
+    prototype === Date.prototype
+  ) {
+    return deepStrictEqualValue(a.valueOf(), b.valueOf(), memo)
+  }
 
   if (type.isWeakMap() || type.isWeakSet() || type.isPromise()) return a === b
 
   if (type.isRegExp()) return deepStrictEqualRegexp(a, b)
 
   const memoizedResultA = memo.get(a, b)
-  if (memoizedResultA !== null) return memoizedResultA
+  if (memoizedResultA !== undefined) return memoizedResultA
 
   const memoizedResultB = memo.get(b, a)
-  if (memoizedResultB !== null) return memoizedResultB
+  if (memoizedResultB !== undefined) return memoizedResultB
 
   // Temporary value to break circular recursion
   memo.set(a, b, true)

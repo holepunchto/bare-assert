@@ -69,8 +69,10 @@ test('deepStrictEqual, basic', (t) => {
 
 test('deepStrictEqual, array', (t) => {
   t.execution(() => assert.deepStrictEqual([1, 'foo'], [1, 'foo']))
+  t.execution(() => assert.deepStrictEqual([1, , , 3], [1, , , 3]))
   t.exception(() => assert.deepStrictEqual([1, 'foo'], [1], 'should fail'), /should fail/)
   t.exception(() => assert.deepStrictEqual([1, 'foo'], [1, 'bar'], 'should fail'), /should fail/)
+  t.exception(() => assert.deepStrictEqual([1, , , 3], [1, , , 3, ,], 'should fail'), /should fail/)
 })
 
 test('deepStrictEqual, object', (t) => {
@@ -82,6 +84,32 @@ test('deepStrictEqual, object', (t) => {
     /should fail/
   )
   t.exception(() => assert.deepStrictEqual({ a: [1, 2] }, { a: [1] }, 'should fail'), /should fail/)
+})
+
+test('deepStrictEqual, object, getter', (t) => {
+  const obj = {
+    get foo() {
+      return 'bar'
+    }
+  }
+
+  t.execution(() => assert.deepStrictEqual(obj, { foo: 'bar' }))
+  t.exception(() => assert.deepStrictEqual(obj, { foo: 'baz' }, 'should fail'), /should fail/)
+})
+
+test('deepStrictEqual, object, prototype', (t) => {
+  const prototype = { __proto__: null }
+  const a = { constructor: 42, foo: 'bar' }
+  const b = { constructor: 42, foo: 'bar' }
+
+  Object.setPrototypeOf(a, prototype)
+  Object.setPrototypeOf(b, prototype)
+
+  t.execution(() => assert.deepStrictEqual(a, b))
+
+  Object.setPrototypeOf(b, { __proto__: null })
+
+  t.exception(() => assert.deepStrictEqual(a, b, 'should fail'), /should fail/)
 })
 
 test('deepStrictEqual, regexp', (t) => {
@@ -153,7 +181,7 @@ test('deepStrictEqual, weak set', (t) => {
   t.exception(() => assert.deepStrictEqual(set1, set2, 'should fail'), /should fail/)
 })
 
-test('deepStrictEqual, symbols', (t) => {
+test('deepStrictEqual, symbol', (t) => {
   t.execution(() => assert.deepStrictEqual(Symbol.for('foo'), Symbol.for('foo')))
   t.exception(
     () => assert.deepStrictEqual(Symbol.for('foo'), Symbol.for('bar'), 'should fail'),
@@ -170,21 +198,166 @@ test('deepStrictEqual, symbols', (t) => {
   )
 })
 
-test('deepStrictEqual, object wrappers', (t) => {
+test('deepStrictEqual, boxed value', (t) => {
+  const boxedSymbol = Object(Symbol())
+
   t.execution(() => assert.deepStrictEqual(new String('foo'), Object('foo')))
   t.execution(() => assert.deepStrictEqual(new Number(1), new Number(1)))
+  t.execution(() => assert.deepStrictEqual(boxedSymbol, boxedSymbol))
+  t.exception(
+    () => assert.deepStrictEqual(new Boolean(true), Object(false), 'should fail'),
+    /should fail/
+  )
   t.exception(
     () => assert.deepStrictEqual(new Number(1), new Number(2), 'should fail'),
     /should fail/
   )
 })
 
-test('deepStrictEqual, errors', (t) => {
+test('deepStrictEqual, date', (t) => {
+  t.execution(() => assert.deepStrictEqual(new Date(2000, 3, 14), new Date(2000, 3, 14)))
+  t.exception(
+    () => assert.deepStrictEqual(new Date(), new Date(2000, 3, 14), 'should fail'),
+    /should fail/
+  )
+})
+
+test('deepStrictEqual, date, additional property', (t) => {
+  const date1 = new Date('foo')
+  const date2 = new Date('bar')
+
+  date1.foo = true
+  date2.foo = true
+
+  t.execution(() => assert.deepStrictEqual(date1, date2))
+
+  date2.foo = false
+
+  t.exception(() => assert.deepStrictEqual(date1, date2, 'should fail'), /should fail/)
+})
+
+test('deepStrictEqual, error', (t) => {
   t.execution(() => assert.deepStrictEqual(new Error('foo'), new Error('foo')))
   t.exception(
     () => assert.deepStrictEqual(new Error('foo'), new Error('bar'), 'should fail'),
     /should fail/
   )
+  t.exception(
+    () => assert.deepStrictEqual(new Error('foo'), new TypeError('foo'), 'should fail'),
+    /should fail/
+  )
+})
+
+test('deepStrictEqual, error, cause property', (t) => {
+  t.execution(() =>
+    assert.deepStrictEqual(
+      new Error('err', { cause: new Error('foo') }),
+      new Error('err', { cause: new Error('foo') })
+    )
+  )
+  t.exception(
+    () =>
+      assert.deepStrictEqual(
+        new Error('err', { cause: new Error('foo') }),
+        new Error('err', { cause: new Error('bar') }),
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.deepStrictEqual(
+        new Error('err', { cause: new Error('foo') }),
+        new Error('err'),
+        'should fail'
+      ),
+    /should fail/
+  )
+})
+
+test('deepStrictEqual, error, aggregate error', (t) => {
+  t.execution(() =>
+    assert.deepStrictEqual(
+      new AggregateError([new Error('foo'), new Error('bar')]),
+      new AggregateError([new Error('foo'), new Error('bar')])
+    )
+  )
+  t.exception(
+    () =>
+      assert.deepStrictEqual(
+        new AggregateError([new Error('foo'), new Error('bar')]),
+        new AggregateError([new Error('foo'), new Error('baz')]),
+        'should fail'
+      ),
+    /should fail/
+  )
+})
+
+test('deepStrictEqual, error, additional property', (t) => {
+  const error1 = new Error('foo')
+  const error2 = new Error('foo')
+
+  error1.foo = true
+  error2.foo = true
+
+  t.execution(() => assert.deepStrictEqual(error1, error2))
+
+  error2.foo = false
+
+  t.exception(() => assert.deepStrictEqual(error1, error2, 'should fail'), /should fail/)
+})
+
+test('deepStrictEqual, error, custom toStringTag', (t) => {
+  const error = new Error('foo')
+
+  error[Symbol.toStringTag] = 'CustomTag'
+
+  t.exception(() => assert.deepStrictEqual(error, new Error('foo'), 'should fail'), /should fail/)
+})
+
+test('deepStrictEqual, buffer', (t) => {
+  t.execution(() => assert.deepStrictEqual(Buffer.from('foo'), Buffer.from('foo')))
+  t.exception(
+    () => assert.deepStrictEqual(Buffer.from('foo'), Buffer.from('bar'), 'should fail'),
+    /should fail/
+  )
+})
+
+test('deepStrictEqual, promise', (t) => {
+  const promise1 = Promise.resolve(1)
+  const promise2 = Promise.resolve(1)
+
+  t.execution(() => assert.deepStrictEqual(promise1, promise1))
+  t.exception(() => assert.deepStrictEqual(promise1, promise2, 'should fail'), /should fail/)
+})
+
+test('deepStrictEqual, proxy', (t) => {
+  const proxy = new Proxy([1, 2], {})
+
+  t.execution(() => assert.deepStrictEqual(proxy, [1, 2]))
+  t.exception(() => assert.deepStrictEqual(proxy, [1, 1], 'should fail'), /should fail/)
+})
+
+test('deepStrictEqual, url', (t) => {
+  t.execution(() => assert.deepStrictEqual(new URL('http://foo'), new URL('http://foo')))
+  t.exception(
+    () => assert.deepStrictEqual(new URL('http://foo'), new URL('http://bar'), 'should fail'),
+    /should fail/
+  )
+})
+
+test('deepStrictEqual, url, additional property', (t) => {
+  const url1 = new URL('http://foo')
+  const url2 = new URL('http://foo')
+
+  url1.foo = true
+  url2.foo = true
+
+  t.execution(() => assert.deepStrictEqual(url1, url2))
+
+  url2.foo = false
+
+  t.exception(() => assert.deepStrictEqual(url1, url2, 'should fail'), /should fail/)
 })
 
 test('deepStrictEqual, recursive self-references', (t) => {

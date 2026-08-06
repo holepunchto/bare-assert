@@ -132,9 +132,11 @@ function deepStrictEqualValue(a, b, memo = new MemoizeMap()) {
   if (prototype !== Object.getPrototypeOf(b)) return false
 
   if (
-    prototype === String.prototype ||
+    prototype === BigInt.prototype ||
+    prototype === Boolean.prototype ||
     prototype === Number.prototype ||
-    prototype === Boolean.prototype
+    prototype === String.prototype ||
+    prototype === Symbol.prototype
   ) {
     return deepStrictEqualValue(a.valueOf(), b.valueOf(), memo)
   }
@@ -143,19 +145,27 @@ function deepStrictEqualValue(a, b, memo = new MemoizeMap()) {
 
   if (type.isRegExp()) return deepStrictEqualRegexp(a, b)
 
-  const memoizedResultA = memo.get(a, b)
-  if (memoizedResultA !== undefined) return memoizedResultA
+  if (Buffer.isBuffer(a)) return deepStrictEqualBuffer(a, b)
+  if (type.isTypedArray()) return deepStrictEqualBuffer(a, b)
+  if (type.isArrayBuffer()) return deepStrictEqualBuffer(new Uint8Array(a), new Uint8Array(b))
+  if (type.isDataView()) {
+    return deepStrictEqualBuffer(
+      new Uint8Array(a.buffer, a.byteOffset, a.byteLength),
+      new Uint8Array(b.buffer, b.byteOffset, b.byteLength)
+    )
+  }
 
-  const memoizedResultB = memo.get(b, a)
-  if (memoizedResultB !== undefined) return memoizedResultB
+  if (memo.has(a, b)) return memo.get(a, b)
+  if (memo.has(b, a)) return memo.get(b, a)
 
   // Temporary value to break circular recursion
   memo.set(a, b, true)
 
   let result
+
   if (type.isDate()) result = deepStrictEqualDate(a, b, memo)
   else if (type.isError()) result = deepStrictEqualError(a, b, memo)
-  else if (type.isArray()) result = deepStrictEqualArray(a, b, memo)
+  else if (type.isArguments() || type.isArray()) result = deepStrictEqualArray(a, b, memo)
   else if (type.isMap()) result = deepStrictEqualMap(a, b, memo)
   else if (type.isSet()) result = deepStrictEqualSet(a, b, memo)
   else result = deepStrictEqualObject(a, b, memo)
@@ -169,8 +179,12 @@ function deepStrictEqualRegexp(a, b) {
   return a.lastIndex === b.lastIndex && a.flags === b.flags && a.source === b.source
 }
 
+function deepStrictEqualBuffer(a, b) {
+  return a.byteLength === b.byteLength && Buffer.compare(a, b) === 0
+}
+
 function deepStrictEqualDate(a, b, memo) {
-  return deepStrictEqualValue(a.valueOf(), b.valueOf(), memo) && deepStrictEqualObject(a, b, memo)
+  return Object.is(a.getTime(), b.getTime()) && deepStrictEqualObject(a, b, memo)
 }
 
 function deepStrictEqualError(a, b, memo) {
@@ -240,7 +254,7 @@ function deepStrictEqualObject(a, b, memo) {
   if (aKeys.length !== bKeys.length) return false
 
   for (const key of aKeys) {
-    if (!deepStrictEqualValue(a[key], b[key], memo)) return false
+    if (!(key in b) || !deepStrictEqualValue(a[key], b[key], memo)) return false
   }
 
   return true

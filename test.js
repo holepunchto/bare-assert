@@ -86,6 +86,20 @@ test('deepStrictEqual, object', (t) => {
   t.exception(() => assert.deepStrictEqual({ a: [1, 2] }, { a: [1] }, 'should fail'), /should fail/)
 })
 
+test('deepStrictEqual, class', (t) => {
+  class MyClass {
+    constructor(value) {
+      this.value = value
+    }
+  }
+
+  t.execution(() => assert.deepStrictEqual(new MyClass('foo'), new MyClass('foo')))
+  t.exception(
+    () => assert.deepStrictEqual(new MyClass('foo'), new MyClass('bar'), 'should fail'),
+    /should fail/
+  )
+})
+
 test('deepStrictEqual, object, getter', (t) => {
   const obj = {
     get foo() {
@@ -201,15 +215,24 @@ test('deepStrictEqual, symbol', (t) => {
 test('deepStrictEqual, boxed value', (t) => {
   const boxedSymbol = Object(Symbol())
 
-  t.execution(() => assert.deepStrictEqual(new String('foo'), Object('foo')))
   t.execution(() => assert.deepStrictEqual(new Number(1), new Number(1)))
-  t.execution(() => assert.deepStrictEqual(boxedSymbol, boxedSymbol))
+  t.exception(
+    () => assert.deepStrictEqual(new Number(1), new Number(2), 'should fail'),
+    /should fail/
+  )
+
+  t.execution(() => assert.deepStrictEqual(new String('foo'), Object('foo')))
   t.exception(
     () => assert.deepStrictEqual(new Boolean(true), Object(false), 'should fail'),
     /should fail/
   )
+
+  t.execution(() => assert.deepStrictEqual(Object(1n), Object(1n)))
+  t.exception(() => assert.deepStrictEqual(Object(1n), Object(2n), 'should fail'), /should fail/)
+
+  t.execution(() => assert.deepStrictEqual(boxedSymbol, boxedSymbol))
   t.exception(
-    () => assert.deepStrictEqual(new Number(1), new Number(2), 'should fail'),
+    () => assert.deepStrictEqual(boxedSymbol, Object(Symbol()), 'should fail'),
     /should fail/
   )
 })
@@ -323,6 +346,38 @@ test('deepStrictEqual, buffer', (t) => {
   )
 })
 
+test('deepStrictEqual, arraybuffer', (t) => {
+  t.execution(() => assert.deepStrictEqual(new ArrayBuffer(8), new ArrayBuffer(8)))
+  t.exception(
+    () => assert.deepStrictEqual(new ArrayBuffer(10), new ArrayBuffer(12), 'should fail'),
+    /should fail/
+  )
+})
+
+test('deepStrictEqual, typed array', (t) => {
+  t.execution(() => assert.deepStrictEqual(new Uint16Array([21, 31]), new Uint16Array([21, 31])))
+  t.exception(
+    () =>
+      assert.deepStrictEqual(new Uint16Array([21, 31]), new Uint16Array([31, 21]), 'should fail'),
+    /should fail/
+  )
+})
+
+test('deepStrictEqual, dataview', (t) => {
+  t.execution(() =>
+    assert.deepStrictEqual(new DataView(new ArrayBuffer(10)), new DataView(new ArrayBuffer(10)))
+  )
+  t.exception(
+    () =>
+      assert.deepStrictEqual(
+        new DataView(new ArrayBuffer(10)),
+        new DataView(new ArrayBuffer(12)),
+        'should fail'
+      ),
+    /should fail/
+  )
+})
+
 test('deepStrictEqual, promise', (t) => {
   const promise1 = Promise.resolve(1)
   const promise2 = Promise.resolve(1)
@@ -360,28 +415,98 @@ test('deepStrictEqual, url, additional property', (t) => {
   t.exception(() => assert.deepStrictEqual(url1, url2, 'should fail'), /should fail/)
 })
 
-test('deepStrictEqual, recursive self-references', (t) => {
-  const foo = {}
-  foo.prop = foo
+test('deepStrictEqual, recursive object', (t) => {
+  {
+    const a = {}
+    a.prop = a
 
-  const bar = {}
-  bar.prop = bar
+    const b = {}
+    b.prop = b
 
-  t.execution(() => assert.deepStrictEqual(foo, bar))
+    assert.deepStrictEqual(a, b)
+  }
+
+  {
+    const a = { prop: null }
+    const b = { prop: a }
+    a.prop = b
+
+    t.execution(() => assert.deepStrictEqual(a, b))
+  }
+
+  {
+    const a = {}
+    a.prop = 'foo'
+
+    const b = {}
+    b.prop = b
+
+    t.exception(() => assert.deepStrictEqual(a, b, 'should fail'), /should fail/)
+  }
+
+  /*
+  {
+    const a = {}
+    a.prop = a
+
+    const b = {}
+    b.prop = {}
+    b.prop.prop = b
+
+    t.exception(() => assert.deepStrictEqual(a, b, 'should fail'), /should fail/)
+  }
+
+  {
+    const a = {}
+    a.prop = a
+
+    const b = {}
+    b.prop = b
+
+    const c = {}
+    c.prop = a
+
+    t.exception(() => assert.deepStrictEqual(b, c, 'should fail'), /should fail/)
+  }
+  */
 })
 
-test('deepStrictEqual, recursive mutual references', (t) => {
-  const foo = { prop: null }
-  const bar = { prop: foo }
-  foo.prop = bar
+test('deepStrictEqual, recursive array', (t) => {
+  const a = []
+  const b = [a]
+  a[0] = b
 
-  t.execution(() => assert.deepStrictEqual(foo, bar))
+  t.execution(() => assert.deepStrictEqual(a, b))
 })
 
-test('deepStrictEqual, recursive lists', (t) => {
-  const foo = []
-  const bar = [foo]
-  foo[0] = bar
+test('deepStrictEqual, recursive map', (t) => {
+  {
+    const a = new Map()
+    a.set('prop', a)
 
-  t.execution(() => assert.deepStrictEqual(foo, bar))
+    const b = new Map()
+    b.set('prop', b)
+
+    t.execution(() => assert.deepStrictEqual(a, b))
+  }
+
+  {
+    const a = new Map()
+    a.set(a, 'value')
+
+    const b = new Map()
+    b.set(b, 'value')
+
+    t.execution(() => assert.deepStrictEqual(a, b))
+  }
+})
+
+test('deepStrictEqual, recursive set', (t) => {
+  const a = new Set()
+  a.add(a)
+
+  const b = new Set()
+  b.add(b)
+
+  t.execution(() => assert.deepStrictEqual(a, b))
 })

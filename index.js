@@ -156,9 +156,9 @@ function deepStrictEqualValue(a, b, depth = 0, memo = new MemoizeMap()) {
     prototype === Number.prototype ||
     prototype === String.prototype ||
     prototype === Symbol.prototype
-  )
+  ) {
     result = deepStrictEqualBoxedValue(a, b, depth, memo)
-  else if (type.isRegExp()) result = deepStrictEqualRegexp(a, b, depth, memo)
+  } else if (type.isRegExp()) result = deepStrictEqualRegexp(a, b, depth, memo)
   else if (type.isTypedArray()) result = deepStrictEqualTypedArray(a, b, depth, memo)
   else if (type.isDate()) result = deepStrictEqualDate(a, b, depth, memo)
   else if (type.isError()) result = deepStrictEqualError(a, b, depth, memo)

@@ -235,16 +235,60 @@ function deepStrictEqualArrayUnordered(a, b, memo) {
   return true
 }
 
+// A key can be matched through a native `Map`/`Set` lookup only when it is a
+// primitive whose deep equality collapses to the `SameValueZero` relation those
+// lookups use. Objects and functions must be matched by deep comparison, and so
+// must `+0` and `-0`: `SameValueZero` treats them as equal, but
+// `deepStrictEqual` keeps their signs distinct.
+function requiresDeepKeyMatch(key) {
+  if (key === 0) return true // Covers both `+0` and `-0`.
+
+  const type = typeof key
+
+  return (type === 'object' && key !== null) || type === 'function'
+}
+
 function deepStrictEqualMap(a, b, memo) {
   if (a.size !== b.size) return false
 
-  return deepStrictEqualArrayUnordered(Array.from(a.entries()), Array.from(b.entries()), memo)
+  // Match entries with primitive keys directly through `b` in linear time and
+  // leave only the object-keyed entries for the quadratic fallback.
+  const restA = []
+  const restB = []
+
+  for (const [key, value] of a) {
+    if (requiresDeepKeyMatch(key)) {
+      restA.push([key, value])
+    } else if (!b.has(key) || !deepStrictEqualValue(value, b.get(key), memo)) {
+      return false
+    }
+  }
+
+  for (const entry of b) {
+    if (requiresDeepKeyMatch(entry[0])) restB.push(entry)
+  }
+
+  return deepStrictEqualArrayUnordered(restA, restB, memo)
 }
 
 function deepStrictEqualSet(a, b, memo) {
   if (a.size !== b.size) return false
 
-  return deepStrictEqualArrayUnordered(Array.from(a.keys()), Array.from(b.keys()), memo)
+  // Match primitive members directly through `b` in linear time and leave only
+  // the object members for the quadratic fallback.
+  const restA = []
+  const restB = []
+
+  for (const value of a) {
+    if (requiresDeepKeyMatch(value)) restA.push(value)
+    else if (!b.has(value)) return false
+  }
+
+  for (const value of b) {
+    if (requiresDeepKeyMatch(value)) restB.push(value)
+  }
+
+  return deepStrictEqualArrayUnordered(restA, restB, memo)
 }
 
 function deepStrictEqualObject(a, b, memo) {

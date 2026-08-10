@@ -131,22 +131,9 @@ function deepStrictEqualValue(a, b, memo = new MemoizeMap()) {
 
   if (prototype !== Object.getPrototypeOf(b)) return false
 
-  if (
-    prototype === BigInt.prototype ||
-    prototype === Boolean.prototype ||
-    prototype === Number.prototype ||
-    prototype === String.prototype ||
-    prototype === Symbol.prototype
-  ) {
-    return deepStrictEqualValue(a.valueOf(), b.valueOf(), memo)
-  }
-
   if (type.isWeakMap() || type.isWeakSet() || type.isPromise()) return a === b
 
-  if (type.isRegExp()) return deepStrictEqualRegexp(a, b)
-
   if (Buffer.isBuffer(a)) return deepStrictEqualBuffer(a, b)
-  if (type.isTypedArray()) return deepStrictEqualBuffer(a, b)
   if (type.isArrayBuffer()) return deepStrictEqualBuffer(new Uint8Array(a), new Uint8Array(b))
   if (type.isDataView()) {
     return deepStrictEqualBuffer(
@@ -163,7 +150,17 @@ function deepStrictEqualValue(a, b, memo = new MemoizeMap()) {
 
   let result
 
-  if (type.isDate()) result = deepStrictEqualDate(a, b, memo)
+  if (
+    prototype === BigInt.prototype ||
+    prototype === Boolean.prototype ||
+    prototype === Number.prototype ||
+    prototype === String.prototype ||
+    prototype === Symbol.prototype
+  )
+    result = deepStrictEqualBoxedValue(a, b, memo)
+  else if (type.isRegExp()) result = deepStrictEqualRegexp(a, b, memo)
+  else if (type.isTypedArray()) result = deepStrictEqualTypedArray(a, b, memo)
+  else if (type.isDate()) result = deepStrictEqualDate(a, b, memo)
   else if (type.isError()) result = deepStrictEqualError(a, b, memo)
   else if (type.isArguments() || type.isArray()) result = deepStrictEqualArray(a, b, memo)
   else if (type.isMap()) result = deepStrictEqualMap(a, b, memo)
@@ -175,8 +172,17 @@ function deepStrictEqualValue(a, b, memo = new MemoizeMap()) {
   return result
 }
 
-function deepStrictEqualRegexp(a, b) {
-  return a.lastIndex === b.lastIndex && a.flags === b.flags && a.source === b.source
+function deepStrictEqualBoxedValue(a, b, memo) {
+  return deepStrictEqualValue(a.valueOf(), b.valueOf(), memo) && deepStrictEqualObject(a, b, memo)
+}
+
+function deepStrictEqualRegexp(a, b, memo) {
+  return (
+    a.lastIndex === b.lastIndex &&
+    a.flags === b.flags &&
+    a.source === b.source &&
+    deepStrictEqualObject(a, b, memo)
+  )
 }
 
 function deepStrictEqualBuffer(a, b) {
@@ -201,13 +207,11 @@ function deepStrictEqualError(a, b, memo) {
 }
 
 function deepStrictEqualArray(a, b, memo) {
-  if (a.length !== b.length) return false
+  return a.length === b.length && deepStrictEqualObject(a, b, memo)
+}
 
-  for (let i = 0; i < a.length; i++) {
-    if (!deepStrictEqualValue(a[i], b[i], memo)) return false
-  }
-
-  return true
+function deepStrictEqualTypedArray(a, b, memo) {
+  return deepStrictEqualBuffer(a, b) && deepStrictEqualObject(a, b, memo)
 }
 
 function deepStrictEqualArrayUnordered(a, b, memo) {
@@ -292,10 +296,20 @@ function deepStrictEqualSet(a, b, memo) {
 }
 
 function deepStrictEqualObject(a, b, memo) {
-  const aKeys = [...Object.keys(a), ...Object.getOwnPropertySymbols(a)]
-  const bKeys = [...Object.keys(b), ...Object.getOwnPropertySymbols(b)]
+  function getKeys(obj) {
+    const keys = Object.keys(obj)
 
-  if (aKeys.length !== bKeys.length) return false
+    for (const symbolKey of Object.getOwnPropertySymbols(obj)) {
+      const { enumerable } = Object.getOwnPropertyDescriptor(obj, symbolKey)
+      if (enumerable) keys.push(symbolKey)
+    }
+
+    return keys
+  }
+
+  const aKeys = getKeys(a)
+
+  if (aKeys.length !== getKeys(b).length) return false
 
   for (const key of aKeys) {
     if (!(key in b) || !deepStrictEqualValue(a[key], b[key], memo)) return false

@@ -81,11 +81,12 @@ test('deepStrictEqual, array', (t) => {
   t.exception(() => assert.deepStrictEqual([1, 'foo'], [1], 'should fail'), /should fail/)
   t.exception(() => assert.deepStrictEqual([1, 'foo'], [1, 'bar'], 'should fail'), /should fail/)
   t.exception(() => assert.deepStrictEqual([1, , , 3], [1, , , 3, ,], 'should fail'), /should fail/)
-})
-
-test('deepStrictEqual, array, hole vs explicit undefined', (t) => {
   t.exception(
     () => assert.deepStrictEqual([1, , 3], [1, undefined, 3], 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.deepStrictEqual([1, , undefined, 3], [1, undefined, , 3], 'should fail'),
     /should fail/
   )
 })

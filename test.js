@@ -556,7 +556,7 @@ test('deepStrictEqual, recursive object', (t) => {
     const b = {}
     b.prop = b
 
-    assert.deepStrictEqual(a, b)
+    t.execution(() => assert.deepStrictEqual(a, b))
   }
 
   {

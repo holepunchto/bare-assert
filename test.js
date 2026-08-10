@@ -67,12 +67,50 @@ test('deepStrictEqual, basic', (t) => {
   t.exception(() => assert.deepStrictEqual(1, new Date(), 'should fail'), /should fail/)
 })
 
+test('deepStrictEqual, negative zero', (t) => {
+  t.exception(() => assert.deepStrictEqual(-0, 0, 'should fail'), /should fail/)
+  t.exception(() => assert.deepStrictEqual([-0], [0], 'should fail'), /should fail/)
+
+  t.execution(() => assert.deepStrictEqual(new Set([-0]), new Set([0])))
+  t.execution(() => assert.deepStrictEqual(new Map([[-0, 1]]), new Map([[0, 1]])))
+})
+
 test('deepStrictEqual, array', (t) => {
   t.execution(() => assert.deepStrictEqual([1, 'foo'], [1, 'foo']))
   t.execution(() => assert.deepStrictEqual([1, , , 3], [1, , , 3]))
   t.exception(() => assert.deepStrictEqual([1, 'foo'], [1], 'should fail'), /should fail/)
   t.exception(() => assert.deepStrictEqual([1, 'foo'], [1, 'bar'], 'should fail'), /should fail/)
   t.exception(() => assert.deepStrictEqual([1, , , 3], [1, , , 3, ,], 'should fail'), /should fail/)
+})
+
+test('deepStrictEqual, array, hole vs explicit undefined', (t) => {
+  t.exception(
+    () => assert.deepStrictEqual([1, , 3], [1, undefined, 3], 'should fail'),
+    /should fail/
+  )
+})
+
+test('deepStrictEqual, array, additional property', (t) => {
+  const a = [1, 2]
+  const b = [1, 2]
+
+  a.foo = 'x'
+  b.foo = 'y'
+
+  t.exception(() => assert.deepStrictEqual(a, b, 'should fail'), /should fail/)
+
+  const c = [1, 2]
+  c.foo = 'x'
+
+  t.exception(() => assert.deepStrictEqual(c, [1, 2], 'should fail'), /should fail/)
+})
+
+test('deepStrictEqual, arguments vs array', (t) => {
+  function make() {
+    return arguments
+  }
+
+  t.exception(() => assert.deepStrictEqual(make(1, 2, 3), [1, 2, 3], 'should fail'), /should fail/)
 })
 
 test('deepStrictEqual, object', (t) => {
@@ -84,6 +122,32 @@ test('deepStrictEqual, object', (t) => {
     /should fail/
   )
   t.exception(() => assert.deepStrictEqual({ a: [1, 2] }, { a: [1] }, 'should fail'), /should fail/)
+})
+
+test('deepStrictEqual, object, key order', (t) => {
+  t.execution(() => assert.deepStrictEqual({ a: 1, b: 2 }, { b: 2, a: 1 }))
+})
+
+test('deepStrictEqual, object, non-enumerable property', (t) => {
+  const a = {}
+  const b = {}
+
+  Object.defineProperty(a, 'x', { value: 1, enumerable: false })
+  Object.defineProperty(b, 'x', { value: 2, enumerable: false })
+
+  t.execution(() => assert.deepStrictEqual(a, b))
+})
+
+test('deepStrictEqual, object, non-enumerable symbol', (t) => {
+  const symbol = Symbol('symbol')
+
+  const a = {}
+  const b = {}
+
+  Object.defineProperty(a, symbol, { value: 1, enumerable: false })
+  Object.defineProperty(b, symbol, { value: 2, enumerable: false })
+
+  t.execution(() => assert.deepStrictEqual(a, b))
 })
 
 test('deepStrictEqual, class', (t) => {
@@ -126,9 +190,23 @@ test('deepStrictEqual, object, prototype', (t) => {
   t.exception(() => assert.deepStrictEqual(a, b, 'should fail'), /should fail/)
 })
 
+test('deepStrictEqual, null prototype', (t) => {
+  t.exception(() => assert.deepStrictEqual({}, Object.create(null), 'should fail'), /should fail/)
+})
+
 test('deepStrictEqual, regexp', (t) => {
   t.execution(() => assert.deepStrictEqual(/abc/, /abc/))
   t.exception(() => assert.deepStrictEqual(/abc/, /abc/g, 'should fail'), /should fail/)
+})
+
+test('deepStrictEqual, regexp, additional property', (t) => {
+  const a = /x/
+  const b = /x/
+
+  a.foo = 1
+  b.foo = 2
+
+  t.exception(() => assert.deepStrictEqual(a, b, 'should fail'), /should fail/)
 })
 
 test('deepStrictEqual, map', (t) => {
@@ -237,6 +315,20 @@ test('deepStrictEqual, boxed value', (t) => {
   )
 })
 
+test('deepStrictEqual, boxed value, additional property', (t) => {
+  const a = new Number(1)
+  const b = new Number(1)
+
+  a.foo = 'x'
+  b.foo = 'y'
+
+  t.exception(() => assert.deepStrictEqual(a, b, 'should fail'), /should fail/)
+})
+
+test('deepStrictEqual, boxed value vs primitive', (t) => {
+  t.exception(() => assert.deepStrictEqual(new Number(1), 1, 'should fail'), /should fail/)
+})
+
 test('deepStrictEqual, date', (t) => {
   t.execution(() => assert.deepStrictEqual(new Date(2000, 3, 14), new Date(2000, 3, 14)))
   t.exception(
@@ -257,6 +349,10 @@ test('deepStrictEqual, date, additional property', (t) => {
   date2.foo = false
 
   t.exception(() => assert.deepStrictEqual(date1, date2, 'should fail'), /should fail/)
+})
+
+test('deepStrictEqual, date, invalid', (t) => {
+  t.execution(() => assert.deepStrictEqual(new Date(NaN), new Date(NaN)))
 })
 
 test('deepStrictEqual, error', (t) => {
@@ -363,6 +459,27 @@ test('deepStrictEqual, typed array', (t) => {
   )
 })
 
+test('deepStrictEqual, typed array, additional property', (t) => {
+  const a = new Uint8Array([1])
+  const b = new Uint8Array([1])
+
+  a.foo = 1
+  b.foo = 2
+
+  t.exception(() => assert.deepStrictEqual(a, b, 'should fail'), /should fail/)
+})
+
+test('deepStrictEqual, typed array, differing type', (t) => {
+  t.exception(
+    () => assert.deepStrictEqual(new Uint8Array([1, 2]), new Int8Array([1, 2]), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.deepStrictEqual(new Uint8Array([1, 2, 3]), Buffer.from([1, 2, 3]), 'should fail'),
+    /should fail/
+  )
+})
+
 test('deepStrictEqual, dataview', (t) => {
   t.execution(() =>
     assert.deepStrictEqual(new DataView(new ArrayBuffer(10)), new DataView(new ArrayBuffer(10)))
@@ -384,6 +501,21 @@ test('deepStrictEqual, promise', (t) => {
 
   t.execution(() => assert.deepStrictEqual(promise1, promise1))
   t.exception(() => assert.deepStrictEqual(promise1, promise2, 'should fail'), /should fail/)
+})
+
+test('deepStrictEqual, function', (t) => {
+  const fn = () => {}
+
+  t.execution(() => assert.deepStrictEqual(fn, fn))
+  t.exception(
+    () =>
+      assert.deepStrictEqual(
+        () => {},
+        () => {},
+        'should fail'
+      ),
+    /should fail/
+  )
 })
 
 test('deepStrictEqual, proxy', (t) => {
@@ -444,7 +576,6 @@ test('deepStrictEqual, recursive object', (t) => {
     t.exception(() => assert.deepStrictEqual(a, b, 'should fail'), /should fail/)
   }
 
-  /*
   {
     const a = {}
     a.prop = a
@@ -468,7 +599,6 @@ test('deepStrictEqual, recursive object', (t) => {
 
     t.exception(() => assert.deepStrictEqual(b, c, 'should fail'), /should fail/)
   }
-  */
 })
 
 test('deepStrictEqual, recursive array', (t) => {

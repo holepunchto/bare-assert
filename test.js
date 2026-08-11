@@ -106,6 +106,19 @@ test('deepStrictEqual, array, additional property', (t) => {
   t.exception(() => assert.deepStrictEqual(c, [1, 2], 'should fail'), /should fail/)
 })
 
+test('deepStrictEqual, array, symbol property', (t) => {
+  const symbol = Symbol.for('symbol')
+
+  const a = [1]
+  const b = [1]
+
+  a[symbol] = 1
+  b[symbol] = 2
+
+  t.exception(() => assert.deepStrictEqual(a, b, 'should fail'), /should fail/)
+  t.exception(() => assert.deepStrictEqual(a, b), assert.AssertionError)
+})
+
 test('deepStrictEqual, arguments vs array', (t) => {
   function make() {
     return arguments
@@ -244,6 +257,21 @@ test('deepStrictEqual, map', (t) => {
   )
 })
 
+test('deepStrictEqual, map, additional property', (t) => {
+  const map1 = new Map([['a', 1]])
+  const map2 = new Map([['a', 1]])
+
+  map1.foo = true
+  map2.foo = true
+
+  t.execution(() => assert.deepStrictEqual(map1, map2))
+
+  map2.foo = false
+
+  t.exception(() => assert.deepStrictEqual(map1, map2, 'should fail'), /should fail/)
+  t.exception(() => assert.deepStrictEqual(map1, new Map([['a', 1]]), 'should fail'), /should fail/)
+})
+
 test('deepStrictEqual, set', (t) => {
   t.execution(() => assert.deepStrictEqual(new Set(['a', 1, 'b', 2]), new Set(['b', 2, 'a', 1])))
   t.execution(() =>
@@ -254,6 +282,21 @@ test('deepStrictEqual, set', (t) => {
       assert.deepStrictEqual(new Set(['a', 1, 'b', 2]), new Set(['b', 2, 'a', 42]), 'should fail'),
     /should fail/
   )
+})
+
+test('deepStrictEqual, set, additional property', (t) => {
+  const set1 = new Set([1])
+  const set2 = new Set([1])
+
+  set1.foo = true
+  set2.foo = true
+
+  t.execution(() => assert.deepStrictEqual(set1, set2))
+
+  set2.foo = false
+
+  t.exception(() => assert.deepStrictEqual(set1, set2, 'should fail'), /should fail/)
+  t.exception(() => assert.deepStrictEqual(set1, new Set([1]), 'should fail'), /should fail/)
 })
 
 test('deepStrictEqual, weak map', (t) => {
@@ -389,6 +432,21 @@ test('deepStrictEqual, error, cause property', (t) => {
       assert.deepStrictEqual(
         new Error('err', { cause: new Error('foo') }),
         new Error('err'),
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.execution(() =>
+    assert.deepStrictEqual(
+      new Error('err', { cause: undefined }),
+      new Error('err', { cause: undefined })
+    )
+  )
+  t.exception(
+    () =>
+      assert.deepStrictEqual(
+        new Error('err'),
+        new Error('err', { cause: undefined }),
         'should fail'
       ),
     /should fail/
@@ -600,6 +658,65 @@ test('deepStrictEqual, recursive object', (t) => {
 
     t.exception(() => assert.deepStrictEqual(b, c, 'should fail'), /should fail/)
   }
+})
+
+test('deepStrictEqual, recursive object, cycle shape', (t) => {
+  // Builds a chain of `tail` objects leading into a cycle of `cycle` objects,
+  // every node linked to the next through a single `prop` property. Every such
+  // graph unfolds to the same infinite chain, so the shape of the cycle alone
+  // does not decide equality; what matters is how many objects are reachable
+  // from the root before one repeats.
+  function cyclic(tail, cycle) {
+    const nodes = []
+
+    for (let i = 0; i < tail + cycle; i++) nodes.push({})
+    for (let i = 0; i < nodes.length - 1; i++) nodes[i].prop = nodes[i + 1]
+
+    nodes[nodes.length - 1].prop = nodes[tail]
+
+    return nodes[0]
+  }
+
+  t.execution(() => assert.deepStrictEqual(cyclic(0, 1), cyclic(0, 1)))
+  t.execution(() => assert.deepStrictEqual(cyclic(2, 2), cyclic(2, 2)))
+
+  t.execution(() => assert.deepStrictEqual(cyclic(0, 2), cyclic(1, 1)))
+  t.execution(() => assert.deepStrictEqual(cyclic(1, 3), cyclic(3, 1)))
+
+  t.execution(() => assert.deepStrictEqual(cyclic(0, 3), cyclic(1, 2)))
+  t.execution(() => assert.deepStrictEqual(cyclic(1, 2), cyclic(2, 1)))
+  t.execution(() => assert.deepStrictEqual(cyclic(0, 3), cyclic(2, 1)))
+
+  t.exception(
+    () => assert.deepStrictEqual(cyclic(0, 1), cyclic(0, 2), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.deepStrictEqual(cyclic(0, 1), cyclic(1, 1), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.deepStrictEqual(cyclic(0, 2), cyclic(1, 2), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.deepStrictEqual(cyclic(1, 2), cyclic(2, 2), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.deepStrictEqual(cyclic(0, 3), cyclic(1, 3), 'should fail'),
+    /should fail/
+  )
+})
+
+test('deepStrictEqual, recursive object, cycle value', (t) => {
+  const a = { value: 1 }
+  a.prop = a
+
+  const b = { value: 2 }
+  b.prop = b
+
+  t.exception(() => assert.deepStrictEqual(a, b, 'should fail'), /should fail/)
 })
 
 test('deepStrictEqual, recursive array', (t) => {

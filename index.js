@@ -1,6 +1,7 @@
 const inspect = require('bare-inspect')
 const getType = require('bare-type')
-const MemoizeMap = require('./lib/memoize-map')
+const Memoization = require('./lib/memoization')
+const getEnumerableKeys = require('./lib/get-enumerable-keys')
 
 class AssertionError extends Error {
   constructor(opts = {}) {
@@ -111,18 +112,28 @@ exports.ifError = function ifError(actual) {
 }
 
 exports.deepStrictEqual = function deepStrictEqual(actual, expected, message) {
-  if (deepStrictEqualValue(actual, expected)) return
+  const memo = new Memoization()
+
+  if (deepStrictEqualValue(actual, expected, memo) && deepStrictEqualCycles(...memo.cycles())) {
+    return
+  }
 
   assertFail({ message, actual, expected, operator: 'deepStrictEqual' }, deepStrictEqual)
 }
 
 exports.notDeepStrictEqual = function notDeepStrictEqual(actual, expected, message) {
-  if (!deepStrictEqualValue(actual, expected)) return
+  const memo = new Memoization()
+
+  if (!deepStrictEqualValue(actual, expected, memo) && deepStrictEqualCycles(...memo.cycles())) {
+    return
+  }
 
   assertFail({ message, actual, expected, operator: 'notDeepStrictEqual' }, notDeepStrictEqual)
 }
 
-function deepStrictEqualValue(a, b, depth = 0, memo = new MemoizeMap()) {
+function deepStrictEqualValue(a, b, memo, opts = {}) {
+  const { allowDuplicates = false } = opts
+
   const type = getType(a)
 
   if (!type.isObject() || !getType(b).isObject()) return Object.is(a, b)
@@ -134,7 +145,9 @@ function deepStrictEqualValue(a, b, depth = 0, memo = new MemoizeMap()) {
   if (type.isWeakMap() || type.isWeakSet() || type.isPromise()) return a === b
 
   if (Buffer.isBuffer(a)) return deepStrictEqualBuffer(a, b)
+
   if (type.isArrayBuffer()) return deepStrictEqualBuffer(new Uint8Array(a), new Uint8Array(b))
+
   if (type.isDataView()) {
     return deepStrictEqualBuffer(
       new Uint8Array(a.buffer, a.byteOffset, a.byteLength),
@@ -142,13 +155,7 @@ function deepStrictEqualValue(a, b, depth = 0, memo = new MemoizeMap()) {
     )
   }
 
-  if (memo.has(a, b)) return memo.get(a, b)
-  if (memo.has(b, a)) return memo.get(b, a)
-
-  // Do not pass the result value, the MemoizeMap will use a 'pending' value.
-  memo.set(a, b, depth)
-
-  let result
+  if (memo.register(a, b, allowDuplicates)) return true
 
   if (
     prototype === BigInt.prototype ||
@@ -157,67 +164,78 @@ function deepStrictEqualValue(a, b, depth = 0, memo = new MemoizeMap()) {
     prototype === String.prototype ||
     prototype === Symbol.prototype
   ) {
-    result = deepStrictEqualBoxedValue(a, b, depth, memo)
-  } else if (type.isRegExp()) result = deepStrictEqualRegexp(a, b, depth, memo)
-  else if (type.isTypedArray()) result = deepStrictEqualTypedArray(a, b, depth, memo)
-  else if (type.isDate()) result = deepStrictEqualDate(a, b, depth, memo)
-  else if (type.isError()) result = deepStrictEqualError(a, b, depth, memo)
-  else if (type.isArguments() || type.isArray()) result = deepStrictEqualArray(a, b, depth, memo)
-  else if (type.isMap()) result = deepStrictEqualMap(a, b, depth, memo)
-  else if (type.isSet()) result = deepStrictEqualSet(a, b, depth, memo)
-  else result = deepStrictEqualObject(a, b, depth, memo)
+    return deepStrictEqualBoxedValue(a, b, memo)
+  }
 
-  memo.set(a, b, depth, result)
+  if (type.isRegExp()) return deepStrictEqualRegexp(a, b, memo)
 
-  return result
+  if (type.isTypedArray()) return deepStrictEqualTypedArray(a, b, memo)
+
+  if (type.isDate()) return deepStrictEqualDate(a, b, memo)
+
+  if (type.isError()) return deepStrictEqualError(a, b, memo)
+
+  if (type.isArguments() || type.isArray()) return deepStrictEqualArray(a, b, memo)
+
+  if (type.isMap()) return deepStrictEqualMap(a, b, memo)
+
+  if (type.isSet()) return deepStrictEqualSet(a, b, memo)
+
+  return deepStrictEqualObject(a, b, memo)
 }
 
 function deepStrictEqualBuffer(a, b) {
   return a.byteLength === b.byteLength && Buffer.compare(a, b) === 0
 }
 
-function deepStrictEqualBoxedValue(a, b, depth, memo) {
-  return (
-    deepStrictEqualValue(a.valueOf(), b.valueOf(), depth, memo) &&
-    deepStrictEqualObject(a, b, depth, memo)
-  )
+function deepStrictEqualCycles(a, b) {
+  if (a.length !== b.length) return false
+
+  a.sort()
+  b.sort()
+
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false
+  }
+
+  return true
 }
 
-function deepStrictEqualRegexp(a, b, depth, memo) {
+function deepStrictEqualBoxedValue(a, b, memo) {
+  return deepStrictEqualValue(a.valueOf(), b.valueOf(), memo) && deepStrictEqualObject(a, b, memo)
+}
+
+function deepStrictEqualRegexp(a, b, memo) {
   return (
     a.lastIndex === b.lastIndex &&
     a.flags === b.flags &&
     a.source === b.source &&
-    deepStrictEqualObject(a, b, depth, memo)
+    deepStrictEqualObject(a, b, memo)
   )
 }
 
-function deepStrictEqualDate(a, b, depth, memo) {
-  return Object.is(a.getTime(), b.getTime()) && deepStrictEqualObject(a, b, depth, memo)
+function deepStrictEqualDate(a, b, memo) {
+  return Object.is(a.getTime(), b.getTime()) && deepStrictEqualObject(a, b, memo)
 }
 
-function deepStrictEqualError(a, b, depth, memo) {
-  const hasCause = Object.hasOwn(a, 'cause') || Object.hasOwn(b, 'cause')
-  const hasErrors = Object.hasOwn(a, 'errors') || Object.hasOwn(b, 'errors')
-
+function deepStrictEqualError(a, b, memo) {
   return (
-    deepStrictEqualValue(a.name, b.name, depth, memo) &&
-    deepStrictEqualValue(a.message, b.message, depth, memo) &&
-    (hasCause ? deepStrictEqualValue(a.cause, b.cause, depth, memo) : true) &&
-    (hasErrors ? deepStrictEqualValue(a.errors, b.errors, depth, memo) : true) &&
-    deepStrictEqualObject(a, b, depth, memo)
+    deepStrictEqualValue(a.name, b.name, memo) &&
+    deepStrictEqualValue(a.message, b.message, memo) &&
+    deepStrictEqualObjectKeys(a, b, ['cause', 'errors'], memo) &&
+    deepStrictEqualObject(a, b, memo)
   )
 }
 
-function deepStrictEqualArray(a, b, depth, memo) {
-  return a.length === b.length && deepStrictEqualObject(a, b, depth, memo)
+function deepStrictEqualArray(a, b, memo) {
+  return a.length === b.length && deepStrictEqualObject(a, b, memo)
 }
 
-function deepStrictEqualTypedArray(a, b, depth, memo) {
-  return deepStrictEqualBuffer(a, b) && deepStrictEqualObject(a, b, depth, memo)
+function deepStrictEqualTypedArray(a, b, memo) {
+  return deepStrictEqualBuffer(a, b) && deepStrictEqualObject(a, b, memo)
 }
 
-function deepStrictEqualArrayUnordered(a, b, depth, memo) {
+function deepStrictEqualArrayUnordered(a, b, memo) {
   if (a.length !== b.length) return false
 
   for (let i = 0; i < a.length; i++) {
@@ -227,7 +245,7 @@ function deepStrictEqualArrayUnordered(a, b, depth, memo) {
     for (let j = 0; j < b.length; j++) {
       const itemB = b[j]
 
-      if (deepStrictEqualValue(itemA, itemB, depth + 1, memo)) {
+      if (deepStrictEqualValue(itemA, itemB, memo, { allowDuplicates: true })) {
         found = true
 
         b.splice(j, 1)
@@ -255,8 +273,8 @@ function requiresDeepKeyMatch(key) {
   return (type === 'object' && key !== null) || type === 'function'
 }
 
-function deepStrictEqualMap(a, b, depth, memo) {
-  if (a.size !== b.size) return false
+function deepStrictEqualMap(a, b, memo) {
+  if (a.size !== b.size || !deepStrictEqualObject(a, b, memo)) return false
 
   // Match entries with primitive keys directly through `b` in linear time and
   // leave only the object-keyed entries for the quadratic fallback.
@@ -266,7 +284,7 @@ function deepStrictEqualMap(a, b, depth, memo) {
   for (const [key, value] of a) {
     if (requiresDeepKeyMatch(key)) {
       restA.push([key, value])
-    } else if (!b.has(key) || !deepStrictEqualValue(value, b.get(key), depth + 1, memo)) {
+    } else if (!b.has(key) || !deepStrictEqualValue(value, b.get(key), memo)) {
       return false
     }
   }
@@ -275,11 +293,11 @@ function deepStrictEqualMap(a, b, depth, memo) {
     if (requiresDeepKeyMatch(entry[0])) restB.push(entry)
   }
 
-  return deepStrictEqualArrayUnordered(restA, restB, depth, memo)
+  return deepStrictEqualArrayUnordered(restA, restB, memo)
 }
 
-function deepStrictEqualSet(a, b, depth, memo) {
-  if (a.size !== b.size) return false
+function deepStrictEqualSet(a, b, memo) {
+  if (a.size !== b.size || !deepStrictEqualObject(a, b, memo)) return false
 
   // Match primitive members directly through `b` in linear time and leave only
   // the object members for the quadratic fallback.
@@ -295,27 +313,28 @@ function deepStrictEqualSet(a, b, depth, memo) {
     if (requiresDeepKeyMatch(value)) restB.push(value)
   }
 
-  return deepStrictEqualArrayUnordered(restA, restB, depth, memo)
+  return deepStrictEqualArrayUnordered(restA, restB, memo)
 }
 
-function deepStrictEqualObject(a, b, depth, memo) {
-  function getKeys(obj) {
-    const keys = Object.keys(obj)
+function deepStrictEqualObjectKeys(a, b, keys, memo) {
+  for (const key of keys) {
+    const hasA = key in a
+    const hasB = key in b
 
-    for (const symbolKey of Object.getOwnPropertySymbols(obj)) {
-      const { enumerable } = Object.getOwnPropertyDescriptor(obj, symbolKey)
-      if (enumerable) keys.push(symbolKey)
-    }
-
-    return keys
+    if ((hasA ^ hasB) === 1) return false
+    if (hasA && hasB && !deepStrictEqualValue(a[key], b[key], memo)) return false
   }
 
-  const aKeys = getKeys(a)
+  return true
+}
 
-  if (aKeys.length !== getKeys(b).length) return false
+function deepStrictEqualObject(a, b, memo) {
+  const aKeys = getEnumerableKeys(a)
+
+  if (aKeys.length !== getEnumerableKeys(b).length) return false
 
   for (const key of aKeys) {
-    if (!(key in b) || !deepStrictEqualValue(a[key], b[key], depth + 1, memo)) return false
+    if (!(key in b) || !deepStrictEqualValue(a[key], b[key], memo)) return false
   }
 
   return true

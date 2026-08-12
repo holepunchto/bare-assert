@@ -147,7 +147,7 @@ function deepStrictEqualValue(a, b, memo) {
     )
   }
 
-  if (memo.add(a, b)) return true
+  if (memo.add(a, b)) return memo.compareCycles()
 
   let result
 
@@ -168,9 +168,9 @@ function deepStrictEqualValue(a, b, memo) {
   else if (type.isSet()) result = deepStrictEqualSet(a, b, memo)
   else result = deepStrictEqualObject(a, b, memo)
 
-  const sameCycleSize = memo.remove(a, b)
+  memo.remove(a, b)
 
-  return result && sameCycleSize
+  return result
 }
 
 function deepStrictEqualBuffer(a, b) {

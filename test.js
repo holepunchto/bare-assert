@@ -788,6 +788,87 @@ test('deepStrictEqual, recursive object, cycle shape', (t) => {
   )
 })
 
+test('deepStrictEqual, recursive object, one-sided cycle', (t) => {
+  // Reaching an already-visited object on one side says nothing about the other
+  // side, so it must not be taken as equality. Here `a` repeats under `foo`
+  // while `b` repeats under `bar`, so each side closes a cycle where the other
+  // holds an ordinary value.
+  const a = {}
+  a.foo = a
+  a.bar = { value: 1 }
+
+  const b = {}
+  b.foo = { value: 1, extra: 2, more: 3 }
+  b.bar = b
+
+  t.exception(() => assert.deepStrictEqual(a, b, 'should fail'), /should fail/)
+
+  // Only one side closes a cycle.
+  const c = {}
+  c.foo = c
+  c.bar = { value: 1 }
+
+  const d = {}
+  d.foo = { value: 9, other: 9 }
+  d.bar = { value: 1 }
+
+  t.exception(() => assert.deepStrictEqual(c, d, 'should fail'), /should fail/)
+
+  const build = () => {
+    const value = {}
+    value.foo = value
+    value.bar = { value: 1 }
+    return value
+  }
+
+  t.execution(() => assert.deepStrictEqual(build(), build()))
+})
+
+test('deepStrictEqual, recursive object, cycle position', (t) => {
+  // A self-edge under a different property, or at a different depth, describes a
+  // different structure. None of these are equal to each other, so treating any
+  // pair as equal would also make equality intransitive.
+  const selfThenLeaf = () => {
+    const a = {}
+    a.foo = a
+    a.bar = { value: 1 }
+    return a
+  }
+
+  const onwardThenSelf = () => {
+    const a = {}
+    a.foo = { foo: { value: 1 } }
+    a.bar = a
+    return a
+  }
+
+  const selfThenChain = () => {
+    const a = {}
+    const b = {}
+    a.foo = a
+    a.bar = b
+    b.foo = { value: 1 }
+    return a
+  }
+
+  t.exception(
+    () => assert.deepStrictEqual(selfThenLeaf(), onwardThenSelf(), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.deepStrictEqual(onwardThenSelf(), selfThenChain(), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.deepStrictEqual(selfThenLeaf(), selfThenChain(), 'should fail'),
+    /should fail/
+  )
+
+  t.execution(() => assert.deepStrictEqual(selfThenLeaf(), selfThenLeaf()))
+  t.execution(() => assert.deepStrictEqual(onwardThenSelf(), onwardThenSelf()))
+  t.execution(() => assert.deepStrictEqual(selfThenChain(), selfThenChain()))
+})
+
 test('deepStrictEqual, recursive object, repeated edges', (t) => {
   // The same object reached through more than one property is still a single
   // cycle, so revisiting it must not restart the traversal.

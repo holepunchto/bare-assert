@@ -112,22 +112,18 @@ exports.ifError = function ifError(actual) {
 }
 
 exports.deepStrictEqual = function deepStrictEqual(actual, expected, message) {
-  const memo = new Memoization()
-
-  if (deepStrictEqualValue(actual, expected, memo)) return
+  if (deepStrictEqualValue(actual, expected)) return
 
   assertFail({ message, actual, expected, operator: 'deepStrictEqual' }, deepStrictEqual)
 }
 
 exports.notDeepStrictEqual = function notDeepStrictEqual(actual, expected, message) {
-  const memo = new Memoization()
-
-  if (!deepStrictEqualValue(actual, expected, memo)) return
+  if (!deepStrictEqualValue(actual, expected)) return
 
   assertFail({ message, actual, expected, operator: 'notDeepStrictEqual' }, notDeepStrictEqual)
 }
 
-function deepStrictEqualValue(a, b, memo) {
+function deepStrictEqualValue(a, b, memo = new Memoization()) {
   const type = getType(a)
 
   if (!type.isObject() || !getType(b).isObject()) return Object.is(a, b)

@@ -114,9 +114,7 @@ exports.ifError = function ifError(actual) {
 exports.deepStrictEqual = function deepStrictEqual(actual, expected, message) {
   const memo = new Memoization()
 
-  if (deepStrictEqualValue(actual, expected, memo) && deepStrictEqualCycles(...memo.cycles())) {
-    return
-  }
+  if (deepStrictEqualValue(actual, expected, memo)) return
 
   assertFail({ message, actual, expected, operator: 'deepStrictEqual' }, deepStrictEqual)
 }
@@ -124,16 +122,12 @@ exports.deepStrictEqual = function deepStrictEqual(actual, expected, message) {
 exports.notDeepStrictEqual = function notDeepStrictEqual(actual, expected, message) {
   const memo = new Memoization()
 
-  if (!deepStrictEqualValue(actual, expected, memo) && deepStrictEqualCycles(...memo.cycles())) {
-    return
-  }
+  if (!deepStrictEqualValue(actual, expected, memo)) return
 
   assertFail({ message, actual, expected, operator: 'notDeepStrictEqual' }, notDeepStrictEqual)
 }
 
-function deepStrictEqualValue(a, b, memo, opts = {}) {
-  const { allowDuplicates = false } = opts
-
+function deepStrictEqualValue(a, b, memo) {
   const type = getType(a)
 
   if (!type.isObject() || !getType(b).isObject()) return Object.is(a, b)
@@ -145,9 +139,7 @@ function deepStrictEqualValue(a, b, memo, opts = {}) {
   if (type.isWeakMap() || type.isWeakSet() || type.isPromise()) return a === b
 
   if (Buffer.isBuffer(a)) return deepStrictEqualBuffer(a, b)
-
   if (type.isArrayBuffer()) return deepStrictEqualBuffer(new Uint8Array(a), new Uint8Array(b))
-
   if (type.isDataView()) {
     return deepStrictEqualBuffer(
       new Uint8Array(a.buffer, a.byteOffset, a.byteLength),
@@ -155,7 +147,9 @@ function deepStrictEqualValue(a, b, memo, opts = {}) {
     )
   }
 
-  if (memo.register(a, b, allowDuplicates)) return true
+  if (memo.add(a, b)) return true
+
+  let result
 
   if (
     prototype === BigInt.prototype ||
@@ -164,41 +158,23 @@ function deepStrictEqualValue(a, b, memo, opts = {}) {
     prototype === String.prototype ||
     prototype === Symbol.prototype
   ) {
-    return deepStrictEqualBoxedValue(a, b, memo)
-  }
+    result = deepStrictEqualBoxedValue(a, b, memo)
+  } else if (type.isRegExp()) result = deepStrictEqualRegexp(a, b, memo)
+  else if (type.isTypedArray()) result = deepStrictEqualTypedArray(a, b, memo)
+  else if (type.isDate()) result = deepStrictEqualDate(a, b, memo)
+  else if (type.isError()) result = deepStrictEqualError(a, b, memo)
+  else if (type.isArguments() || type.isArray()) result = deepStrictEqualArray(a, b, memo)
+  else if (type.isMap()) result = deepStrictEqualMap(a, b, memo)
+  else if (type.isSet()) result = deepStrictEqualSet(a, b, memo)
+  else result = deepStrictEqualObject(a, b, memo)
 
-  if (type.isRegExp()) return deepStrictEqualRegexp(a, b, memo)
+  const sameCycleSize = memo.remove(a, b)
 
-  if (type.isTypedArray()) return deepStrictEqualTypedArray(a, b, memo)
-
-  if (type.isDate()) return deepStrictEqualDate(a, b, memo)
-
-  if (type.isError()) return deepStrictEqualError(a, b, memo)
-
-  if (type.isArguments() || type.isArray()) return deepStrictEqualArray(a, b, memo)
-
-  if (type.isMap()) return deepStrictEqualMap(a, b, memo)
-
-  if (type.isSet()) return deepStrictEqualSet(a, b, memo)
-
-  return deepStrictEqualObject(a, b, memo)
+  return result && sameCycleSize
 }
 
 function deepStrictEqualBuffer(a, b) {
   return a.byteLength === b.byteLength && Buffer.compare(a, b) === 0
-}
-
-function deepStrictEqualCycles(a, b) {
-  if (a.length !== b.length) return false
-
-  a.sort()
-  b.sort()
-
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false
-  }
-
-  return true
 }
 
 function deepStrictEqualBoxedValue(a, b, memo) {
@@ -245,7 +221,7 @@ function deepStrictEqualArrayUnordered(a, b, memo) {
     for (let j = 0; j < b.length; j++) {
       const itemB = b[j]
 
-      if (deepStrictEqualValue(itemA, itemB, memo, { allowDuplicates: true })) {
+      if (deepStrictEqualValue(itemA, itemB, memo)) {
         found = true
 
         b.splice(j, 1)

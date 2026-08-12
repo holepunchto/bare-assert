@@ -147,7 +147,8 @@ function deepStrictEqualValue(a, b, memo) {
     )
   }
 
-  if (memo.add(a, b)) return memo.compareCycles()
+  const { isCircular, isEqual } = memo.add(a, b)
+  if (isCircular) return isEqual
 
   let result
 

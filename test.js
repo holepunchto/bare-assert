@@ -272,6 +272,70 @@ test('deepStrictEqual, map, additional property', (t) => {
   t.exception(() => assert.deepStrictEqual(map1, new Map([['a', 1]]), 'should fail'), /should fail/)
 })
 
+test('deepStrictEqual, map, object keys', (t) => {
+  t.execution(() =>
+    assert.deepStrictEqual(
+      new Map([
+        [{ x: 1 }, 'a'],
+        [{ x: 2 }, 'b']
+      ]),
+      new Map([
+        [{ x: 2 }, 'b'],
+        [{ x: 1 }, 'a']
+      ])
+    )
+  )
+  t.exception(
+    () =>
+      assert.deepStrictEqual(
+        new Map([
+          [{ x: 1 }, 'a'],
+          [{ x: 9 }, 'zzz']
+        ]),
+        new Map([
+          [{ x: 2 }, 'b'],
+          [{ x: 3 }, 'c']
+        ]),
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.deepStrictEqual(
+        new Map([
+          [{ x: 1 }, 'a'],
+          [{ x: 2 }, 'b']
+        ]),
+        new Map([
+          [{ x: 1 }, 'a'],
+          [{ x: 2 }, 'c']
+        ]),
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.deepStrictEqual(
+        {
+          map: new Map([
+            [{ k: 1 }, [1, 2]],
+            [{ k: 2 }, [3, 4]]
+          ])
+        },
+        {
+          map: new Map([
+            [{ k: 1 }, [9, 9]],
+            [{ k: 2 }, [8, 8]]
+          ])
+        },
+        'should fail'
+      ),
+    /should fail/
+  )
+})
+
 test('deepStrictEqual, set', (t) => {
   t.execution(() => assert.deepStrictEqual(new Set(['a', 1, 'b', 2]), new Set(['b', 2, 'a', 1])))
   t.execution(() =>
@@ -297,6 +361,21 @@ test('deepStrictEqual, set, additional property', (t) => {
 
   t.exception(() => assert.deepStrictEqual(set1, set2, 'should fail'), /should fail/)
   t.exception(() => assert.deepStrictEqual(set1, new Set([1]), 'should fail'), /should fail/)
+})
+
+test('deepStrictEqual, set, object members', (t) => {
+  t.execution(() =>
+    assert.deepStrictEqual(new Set([{ x: 1 }, { x: 2 }]), new Set([{ x: 2 }, { x: 1 }]))
+  )
+  t.exception(
+    () =>
+      assert.deepStrictEqual(
+        new Set([{ x: 1 }, { x: 9 }]),
+        new Set([{ x: 2 }, { x: 3 }]),
+        'should fail'
+      ),
+    /should fail/
+  )
 })
 
 test('deepStrictEqual, weak map', (t) => {
@@ -709,6 +788,89 @@ test('deepStrictEqual, recursive object, cycle shape', (t) => {
   )
 })
 
+test('deepStrictEqual, recursive object, repeated edges', (t) => {
+  // The same object reached through more than one property is still a single
+  // cycle, so revisiting it must not restart the traversal.
+  t.execution(() => {
+    const build = () => {
+      const a = {}
+      a.foo = a
+      a.bar = a
+      return a
+    }
+
+    return assert.deepStrictEqual(build(), build())
+  })
+
+  t.execution(() => {
+    const build = () => {
+      const a = {}
+      a.foo = a
+      a.bar = a
+      a.baz = a
+      return a
+    }
+
+    return assert.deepStrictEqual(build(), build())
+  })
+
+  t.execution(() => {
+    const build = () => {
+      const a = {}
+      const b = {}
+
+      a.foo = b
+      a.bar = b
+      b.foo = a
+      b.bar = a
+
+      return a
+    }
+
+    return assert.deepStrictEqual(build(), build())
+  })
+
+  const a = { value: 1 }
+  a.foo = a
+  a.bar = a
+
+  const b = { value: 2 }
+  b.foo = b
+  b.bar = b
+
+  t.exception(() => assert.deepStrictEqual(a, b, 'should fail'), /should fail/)
+})
+
+test('deepStrictEqual, shared reference', (t) => {
+  // One object referenced from several properties is not a cycle: it must
+  // compare equal to a structure that repeats the value instead of sharing it.
+  const shared = { value: 1 }
+
+  t.execution(() =>
+    assert.deepStrictEqual({ foo: shared, bar: shared }, { foo: { value: 1 }, bar: { value: 1 } })
+  )
+  t.execution(() =>
+    assert.deepStrictEqual(
+      { foo: shared, bar: shared, baz: shared },
+      { foo: { value: 1 }, bar: { value: 1 }, baz: { value: 1 } }
+    )
+  )
+  t.execution(() => assert.deepStrictEqual([shared, shared], [{ value: 1 }, { value: 1 }]))
+  t.execution(() =>
+    assert.deepStrictEqual({ foo: shared, bar: shared }, { foo: shared, bar: shared })
+  )
+
+  t.exception(
+    () =>
+      assert.deepStrictEqual(
+        { foo: shared, bar: shared },
+        { foo: { value: 1 }, bar: { value: 2 } },
+        'should fail'
+      ),
+    /should fail/
+  )
+})
+
 test('deepStrictEqual, recursive object, cycle value', (t) => {
   const a = { value: 1 }
   a.prop = a
@@ -747,6 +909,55 @@ test('deepStrictEqual, recursive map', (t) => {
 
     t.execution(() => assert.deepStrictEqual(a, b))
   }
+})
+
+test('notDeepStrictEqual', (t) => {
+  t.execution(() => assert.notDeepStrictEqual({ foo: 1 }, { foo: 2 }))
+  t.execution(() => assert.notDeepStrictEqual([1, 2], [1, 2, 3]))
+  t.exception(() => assert.notDeepStrictEqual({ foo: 1 }, { foo: 1 }, 'should fail'), /should fail/)
+  t.exception(() => assert.notDeepStrictEqual([1, 2], [1, 2], 'should fail'), /should fail/)
+})
+
+test('notDeepStrictEqual, recursive object', (t) => {
+  function cyclic(tail, cycle) {
+    const nodes = []
+
+    for (let i = 0; i < tail + cycle; i++) nodes.push({})
+    for (let i = 0; i < nodes.length - 1; i++) nodes[i].prop = nodes[i + 1]
+
+    nodes[nodes.length - 1].prop = nodes[tail]
+
+    return nodes[0]
+  }
+
+  // Reachable object counts differ, so these are not deeply equal.
+  t.execution(() => assert.notDeepStrictEqual(cyclic(0, 2), cyclic(1, 2)))
+
+  // Equal reachable object counts, so these are deeply equal.
+  t.exception(
+    () => assert.notDeepStrictEqual(cyclic(1, 2), cyclic(2, 1), 'should fail'),
+    /should fail/
+  )
+})
+
+test('notDeepStrictEqual, shared reference', (t) => {
+  const shared = { value: 1 }
+
+  t.execution(() =>
+    assert.notDeepStrictEqual(
+      { foo: shared, bar: shared, baz: 1 },
+      { foo: { value: 1 }, bar: { value: 1 }, baz: 2 }
+    )
+  )
+  t.exception(
+    () =>
+      assert.notDeepStrictEqual(
+        { foo: shared, bar: shared },
+        { foo: { value: 1 }, bar: { value: 1 } },
+        'should fail'
+      ),
+    /should fail/
+  )
 })
 
 test('deepStrictEqual, recursive set', (t) => {

@@ -706,6 +706,18 @@ test('deepStrictEqual, recursive object', (t) => {
 
   {
     const a = {}
+    a.prop = {}
+    a.prop.prop = a.prop
+
+    const b = {}
+    b.prop = {}
+    b.prop.prop = a.prop
+
+    t.execution(() => assert.deepStrictEqual(a, b))
+  }
+
+  {
+    const a = {}
     a.prop = 'foo'
 
     const b = {}

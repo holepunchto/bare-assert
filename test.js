@@ -881,6 +881,208 @@ test('deepStrictEqual, recursive object, cycle position', (t) => {
   t.execution(() => assert.deepStrictEqual(selfThenChain(), selfThenChain()))
 })
 
+test('deepStrictEqual, recursive object, sibling cycles', (t) => {
+  // Cycles found while comparing one property must not affect the comparison of
+  // the next. Here the first property holds a cycle on both sides, and the
+  // second holds a cycle on one side only, which is a difference in its own
+  // right regardless of what the first property established.
+  {
+    const a1 = {}
+    a1.foo = a1
+
+    const a2 = {}
+    a2.foo = a2
+
+    const b1 = {}
+    b1.foo = b1
+
+    const b2 = {}
+    b2.foo = { value: 1 }
+
+    t.exception(
+      () =>
+        assert.deepStrictEqual({ first: a1, second: a2 }, { first: b1, second: b2 }, 'should fail'),
+      /should fail/
+    )
+
+    // The same difference on its own, and with the properties swapped.
+    t.exception(
+      () => assert.deepStrictEqual({ second: a2 }, { second: b2 }, 'should fail'),
+      /should fail/
+    )
+    t.exception(
+      () =>
+        assert.deepStrictEqual({ first: a2, second: a1 }, { first: b2, second: b1 }, 'should fail'),
+      /should fail/
+    )
+  }
+
+  {
+    const a1 = {}
+    a1.foo = a1
+    a1.bar = a1
+
+    const a2 = {}
+    a2.foo = a2
+    a2.bar = { value: 1 }
+
+    const b1 = {}
+    b1.foo = b1
+    b1.bar = b1
+
+    const b2 = {}
+    b2.foo = { value: 1, extra: 2 }
+    b2.bar = { value: 1 }
+
+    t.exception(
+      () =>
+        assert.deepStrictEqual({ first: a1, second: a2 }, { first: b1, second: b2 }, 'should fail'),
+      /should fail/
+    )
+  }
+
+  const build = () => {
+    const first = {}
+    first.foo = first
+
+    const second = {}
+    second.foo = second
+
+    return { first, second }
+  }
+
+  t.execution(() => assert.deepStrictEqual(build(), build()))
+})
+
+test('deepStrictEqual, recursive object, nested up-reference', (t) => {
+  // Both children point back at the root on one side, while on the other the
+  // second child points at its sibling instead.
+  const a = { foo: {}, bar: {} }
+  a.foo.up = a
+  a.bar.up = a
+
+  const b = { foo: {}, bar: {} }
+  b.foo.up = b
+  b.bar.up = b.foo
+
+  t.exception(() => assert.deepStrictEqual(a, b, 'should fail'), /should fail/)
+
+  const build = () => {
+    const value = { foo: {}, bar: {} }
+    value.foo.up = value
+    value.bar.up = value
+    return value
+  }
+
+  t.execution(() => assert.deepStrictEqual(build(), build()))
+})
+
+test('deepStrictEqual, recursive object, self vs sibling', (t) => {
+  // Reaching an object that is already being compared is only conclusive when
+  // both sides have reached one. Here the second property points at the root on
+  // one side and at its sibling on the other, yet both describe the same
+  // structure.
+  const a = {}
+  const aNext = {}
+  a.foo = aNext
+  a.bar = a
+  aNext.foo = a
+  aNext.bar = a
+
+  const b = {}
+  const bNext = {}
+  b.foo = bNext
+  b.bar = bNext
+  bNext.foo = b
+  bNext.bar = b
+
+  t.execution(() => assert.deepStrictEqual(a, b))
+
+  const buildSelf = () => {
+    const first = {}
+    const second = {}
+    first.foo = second
+    first.bar = first
+    second.foo = first
+    second.bar = first
+    return first
+  }
+
+  const buildSibling = () => {
+    const first = {}
+    const second = {}
+    first.foo = second
+    first.bar = second
+    second.foo = first
+    second.bar = first
+    return first
+  }
+
+  t.execution(() => assert.deepStrictEqual(buildSelf(), buildSelf()))
+  t.execution(() => assert.deepStrictEqual(buildSibling(), buildSibling()))
+})
+
+test('deepStrictEqual, recursive object, differing node count', (t) => {
+  // Three distinct objects on one side against two on the other. Stopping as
+  // soon as either side repeats hides the extra object.
+  {
+    const a = {}
+    const aNext = {}
+    const aLast = {}
+    a.foo = aLast
+    a.bar = aNext
+    aNext.foo = a
+    aNext.bar = aNext
+    aLast.foo = a
+    aLast.bar = a
+
+    const b = {}
+    const bNext = {}
+    b.foo = bNext
+    b.bar = bNext
+    bNext.foo = b
+    bNext.bar = b
+
+    t.exception(() => assert.deepStrictEqual(a, b, 'should fail'), /should fail/)
+  }
+
+  {
+    const a = {}
+    const aNext = {}
+    const aLast = {}
+    a.foo = aLast
+    a.bar = aNext
+    aNext.foo = { leaf: 1 }
+    aNext.bar = a
+    aLast.foo = { leaf: 1 }
+    aLast.bar = aLast
+
+    const b = {}
+    const bNext = {}
+    b.foo = bNext
+    b.bar = bNext
+    bNext.foo = { leaf: 1 }
+    bNext.bar = b
+
+    t.exception(() => assert.deepStrictEqual(a, b, 'should fail'), /should fail/)
+  }
+
+  const build = () => {
+    const first = {}
+    const second = {}
+    const third = {}
+    first.foo = third
+    first.bar = second
+    second.foo = first
+    second.bar = second
+    third.foo = first
+    third.bar = first
+    return first
+  }
+
+  t.execution(() => assert.deepStrictEqual(build(), build()))
+})
+
 test('deepStrictEqual, recursive object, repeated edges', (t) => {
   // The same object reached through more than one property is still a single
   // cycle, so revisiting it must not restart the traversal.

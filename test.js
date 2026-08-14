@@ -978,26 +978,8 @@ test('deepStrictEqual, recursive object, nested up-reference', (t) => {
 })
 
 test('deepStrictEqual, recursive object, self vs sibling', (t) => {
-  // Reaching an object that is already being compared is only conclusive when
-  // both sides have reached one. Here the second property points at the root on
-  // one side and at its sibling on the other, yet both describe the same
-  // structure.
-  const a = {}
-  const aNext = {}
-  a.foo = aNext
-  a.bar = a
-  aNext.foo = a
-  aNext.bar = a
-
-  const b = {}
-  const bNext = {}
-  b.foo = bNext
-  b.bar = bNext
-  bNext.foo = b
-  bNext.bar = b
-
-  t.execution(() => assert.deepStrictEqual(a, b))
-
+  // The second property points back at the root on one side and at its sibling
+  // on the other, which are different structures.
   const buildSelf = () => {
     const first = {}
     const second = {}
@@ -1018,56 +1000,29 @@ test('deepStrictEqual, recursive object, self vs sibling', (t) => {
     return first
   }
 
-  t.execution(() => assert.deepStrictEqual(buildSelf(), buildSelf()))
-  t.execution(() => assert.deepStrictEqual(buildSibling(), buildSibling()))
+  // The answer must not depend on how deeply the comparison is nested.
+  t.exception(
+    () => assert.deepStrictEqual(buildSelf(), buildSibling(), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.deepStrictEqual({ value: buildSelf() }, { value: buildSibling() }, 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.deepStrictEqual([buildSelf()], [buildSibling()], 'should fail'),
+    /should fail/
+  )
+
+  t.execution(() => assert.deepStrictEqual({ value: buildSelf() }, { value: buildSelf() }))
+  t.execution(() => assert.deepStrictEqual({ value: buildSibling() }, { value: buildSibling() }))
 })
 
 test('deepStrictEqual, recursive object, differing node count', (t) => {
-  // Three distinct objects on one side against two on the other. Stopping as
-  // soon as either side repeats hides the extra object.
-  {
-    const a = {}
-    const aNext = {}
-    const aLast = {}
-    a.foo = aLast
-    a.bar = aNext
-    aNext.foo = a
-    aNext.bar = aNext
-    aLast.foo = a
-    aLast.bar = a
-
-    const b = {}
-    const bNext = {}
-    b.foo = bNext
-    b.bar = bNext
-    bNext.foo = b
-    bNext.bar = b
-
-    t.exception(() => assert.deepStrictEqual(a, b, 'should fail'), /should fail/)
-  }
-
-  {
-    const a = {}
-    const aNext = {}
-    const aLast = {}
-    a.foo = aLast
-    a.bar = aNext
-    aNext.foo = { leaf: 1 }
-    aNext.bar = a
-    aLast.foo = { leaf: 1 }
-    aLast.bar = aLast
-
-    const b = {}
-    const bNext = {}
-    b.foo = bNext
-    b.bar = bNext
-    bNext.foo = { leaf: 1 }
-    bNext.bar = b
-
-    t.exception(() => assert.deepStrictEqual(a, b, 'should fail'), /should fail/)
-  }
-
-  const build = () => {
+  // Three objects on one side against two on the other, describing the same
+  // structure once the cycles are followed. How many objects a structure is
+  // built from does not decide the answer.
+  const buildThree = () => {
     const first = {}
     const second = {}
     const third = {}
@@ -1080,7 +1035,46 @@ test('deepStrictEqual, recursive object, differing node count', (t) => {
     return first
   }
 
-  t.execution(() => assert.deepStrictEqual(build(), build()))
+  const buildTwo = () => {
+    const first = {}
+    const second = {}
+    first.foo = second
+    first.bar = second
+    second.foo = first
+    second.bar = first
+    return first
+  }
+
+  t.execution(() => assert.deepStrictEqual({ value: buildThree() }, { value: buildTwo() }))
+  t.execution(() => assert.deepStrictEqual([buildThree()], [buildTwo()]))
+  t.execution(() => assert.deepStrictEqual({ value: buildThree() }, { value: buildThree() }))
+
+  const buildThreeWithLeaves = () => {
+    const first = {}
+    const second = {}
+    const third = {}
+    first.foo = third
+    first.bar = second
+    second.foo = { leaf: 1 }
+    second.bar = first
+    third.foo = { leaf: 1 }
+    third.bar = third
+    return first
+  }
+
+  const buildTwoWithLeaves = () => {
+    const first = {}
+    const second = {}
+    first.foo = second
+    first.bar = second
+    second.foo = { leaf: 1 }
+    second.bar = first
+    return first
+  }
+
+  t.execution(() =>
+    assert.deepStrictEqual({ value: buildThreeWithLeaves() }, { value: buildTwoWithLeaves() })
+  )
 })
 
 test('deepStrictEqual, recursive object, repeated edges', (t) => {

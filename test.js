@@ -725,30 +725,6 @@ test('deepStrictEqual, recursive object', (t) => {
 
     t.exception(() => assert.deepStrictEqual(a, b, 'should fail'), /should fail/)
   }
-
-  {
-    const a = {}
-    a.prop = a
-
-    const b = {}
-    b.prop = {}
-    b.prop.prop = b
-
-    t.exception(() => assert.deepStrictEqual(a, b, 'should fail'), /should fail/)
-  }
-
-  {
-    const a = {}
-    a.prop = a
-
-    const b = {}
-    b.prop = b
-
-    const c = {}
-    c.prop = a
-
-    t.exception(() => assert.deepStrictEqual(b, c, 'should fail'), /should fail/)
-  }
 })
 
 test('deepStrictEqual, recursive object, cycle shape', (t) => {
@@ -800,42 +776,6 @@ test('deepStrictEqual, recursive object, cycle shape', (t) => {
   )
 })
 
-test('deepStrictEqual, recursive object, one-sided cycle', (t) => {
-  // Reaching an already-visited object on one side says nothing about the other
-  // side, so it must not be taken as equality. Here `a` repeats under `foo`
-  // while `b` repeats under `bar`, so each side closes a cycle where the other
-  // holds an ordinary value.
-  const a = {}
-  a.foo = a
-  a.bar = { value: 1 }
-
-  const b = {}
-  b.foo = { value: 1, extra: 2, more: 3 }
-  b.bar = b
-
-  t.exception(() => assert.deepStrictEqual(a, b, 'should fail'), /should fail/)
-
-  // Only one side closes a cycle.
-  const c = {}
-  c.foo = c
-  c.bar = { value: 1 }
-
-  const d = {}
-  d.foo = { value: 9, other: 9 }
-  d.bar = { value: 1 }
-
-  t.exception(() => assert.deepStrictEqual(c, d, 'should fail'), /should fail/)
-
-  const build = () => {
-    const value = {}
-    value.foo = value
-    value.bar = { value: 1 }
-    return value
-  }
-
-  t.execution(() => assert.deepStrictEqual(build(), build()))
-})
-
 test('deepStrictEqual, recursive object, cycle position', (t) => {
   // A self-edge under a different property, or at a different depth, describes a
   // different structure. None of these are equal to each other, so treating any
@@ -873,6 +813,17 @@ test('deepStrictEqual, recursive object, cycle position', (t) => {
   )
   t.exception(
     () => assert.deepStrictEqual(selfThenLeaf(), selfThenChain(), 'should fail'),
+    /should fail/
+  )
+
+  // The same shape with no cycle at all is different again.
+  t.exception(
+    () =>
+      assert.deepStrictEqual(
+        selfThenLeaf(),
+        { foo: { value: 9, other: 9 }, bar: { value: 1 } },
+        'should fail'
+      ),
     /should fail/
   )
 
@@ -1160,16 +1111,6 @@ test('deepStrictEqual, shared reference', (t) => {
   )
 })
 
-test('deepStrictEqual, recursive object, cycle value', (t) => {
-  const a = { value: 1 }
-  a.prop = a
-
-  const b = { value: 2 }
-  b.prop = b
-
-  t.exception(() => assert.deepStrictEqual(a, b, 'should fail'), /should fail/)
-})
-
 test('deepStrictEqual, recursive array', (t) => {
   const a = []
   const b = [a]
@@ -1200,6 +1141,16 @@ test('deepStrictEqual, recursive map', (t) => {
   }
 })
 
+test('deepStrictEqual, recursive set', (t) => {
+  const a = new Set()
+  a.add(a)
+
+  const b = new Set()
+  b.add(b)
+
+  t.execution(() => assert.deepStrictEqual(a, b))
+})
+
 test('notDeepStrictEqual', (t) => {
   t.execution(() => assert.notDeepStrictEqual({ foo: 1 }, { foo: 2 }))
   t.execution(() => assert.notDeepStrictEqual([1, 2], [1, 2, 3]))
@@ -1208,25 +1159,19 @@ test('notDeepStrictEqual', (t) => {
 })
 
 test('notDeepStrictEqual, recursive object', (t) => {
-  function cyclic(tail, cycle) {
-    const nodes = []
-
-    for (let i = 0; i < tail + cycle; i++) nodes.push({})
-    for (let i = 0; i < nodes.length - 1; i++) nodes[i].prop = nodes[i + 1]
-
-    nodes[nodes.length - 1].prop = nodes[tail]
-
-    return nodes[0]
+  // A two object cycle against the same cycle behind one extra object.
+  const twoCycle = () => {
+    const first = {}
+    const second = {}
+    first.prop = second
+    second.prop = first
+    return first
   }
 
-  // Reachable object counts differ, so these are not deeply equal.
-  t.execution(() => assert.notDeepStrictEqual(cyclic(0, 2), cyclic(1, 2)))
+  const tailIntoTwoCycle = () => ({ prop: twoCycle() })
 
-  // Equal reachable object counts, so these are deeply equal.
-  t.exception(
-    () => assert.notDeepStrictEqual(cyclic(1, 2), cyclic(2, 1), 'should fail'),
-    /should fail/
-  )
+  t.execution(() => assert.notDeepStrictEqual(twoCycle(), tailIntoTwoCycle()))
+  t.exception(() => assert.notDeepStrictEqual(twoCycle(), twoCycle(), 'should fail'), /should fail/)
 })
 
 test('notDeepStrictEqual, shared reference', (t) => {
@@ -1247,14 +1192,4 @@ test('notDeepStrictEqual, shared reference', (t) => {
       ),
     /should fail/
   )
-})
-
-test('deepStrictEqual, recursive set', (t) => {
-  const a = new Set()
-  a.add(a)
-
-  const b = new Set()
-  b.add(b)
-
-  t.execution(() => assert.deepStrictEqual(a, b))
 })

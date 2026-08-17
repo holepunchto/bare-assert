@@ -19,6 +19,10 @@ declare namespace assert {
 
   export function notStrictEqual(actual: any, expected: any, message?: string | Error): void
 
+  export function deepStrictEqual(actual: any, expected: any, message?: string | Error): void
+
+  export function notDeepStrictEqual(actual: any, expected: any, message?: string | Error): void
+
   export function match(actual: string, expected: RegExp, message?: string | Error): void
 
   export function doesNotMatch(actual: string, expected: RegExp, message?: string | Error): void

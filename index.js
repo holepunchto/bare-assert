@@ -305,11 +305,11 @@ function deepStrictEqualValue(a, b, partial = false, memo = new Memoization()) {
 
   let result
 
-  if (type.isError()) result = deepStrictEqualError(a, b, partial, memo)
+  if (partial === true && type.isArray()) {
+    result = partialDeepStrictEqualArray(a, b, partial, memo)
+  } else if (type.isError()) result = deepStrictEqualError(a, b, partial, memo)
   else if (type.isMap()) result = deepStrictEqualMap(a, b, partial, memo)
   else if (type.isSet()) result = deepStrictEqualSet(a, b, partial, memo)
-  else if (partial === true && type.isArray())
-    result = partialDeepStrictEqualArray(a, b, partial, memo)
   else result = deepStrictEqualObject(a, b, partial, memo)
 
   memo.remove(a, b)

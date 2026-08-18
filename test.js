@@ -1442,3 +1442,41 @@ test('notDeepStrictEqual, shared reference', (t) => {
     /should fail/
   )
 })
+
+test('partialDeepStrictEqual, basic', (t) => {
+  t.execution(() => assert.partialDeepStrictEqual({ a: { b: { c: 1 } } }, { a: { b: { c: 1 } } }))
+  t.execution(() => assert.partialDeepStrictEqual({ a: 1, b: 2, c: 3 }, { b: 2 }))
+  t.execution(() => assert.partialDeepStrictEqual([1, 2, 3, 4, 5, 6, 7, 8, 9], [4, 5, 9]))
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Set([{ a: 1 }, { b: 1 }]), new Set([{ a: 1 }]))
+  )
+  assert.partialDeepStrictEqual(
+    new Map([
+      ['foo', 'foo'],
+      ['bar', 'bar']
+    ]),
+    new Map([['bar', 'bar']])
+  )
+
+  t.exception(
+    () => assert.partialDeepStrictEqual({ a: 1 }, { a: 1, b: 2 }, 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual({ a: { b: 2 } }, { a: { b: '2' } }, 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual([1, 2, 3, 4, 5, 6, 7, 8, 9], [5, 4, 8], 'should fail'),
+    /should fail/
+  )
+})
+
+test('partialDeepStrictEqual, sparse array', (t) => {
+  t.execution(() => assert.partialDeepStrictEqual([1, , , undefined, , 3], [1, , undefined, 3]))
+
+  t.exception(
+    () => assert.partialDeepStrictEqual([1, , , , 3], [1, , undefined, 3], 'should fail'),
+    /should fail/
+  )
+})

@@ -1480,3 +1480,39 @@ test('partialDeepStrictEqual, sparse array', (t) => {
     /should fail/
   )
 })
+
+test('partialDeepStrictEqual, error', (t) => {
+  t.execution(() => assert.partialDeepStrictEqual(new Error('message'), new Error()))
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Error('message', { cause: 42 }), new Error('message'))
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Error('message', { cause: undefined }), new Error('message'))
+  )
+
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        new Error('message'),
+        new Error('message', { cause: undefined }),
+        'should fail'
+      ),
+    /should fail/
+  )
+})
+
+test('partialDeepStrictEqual, error, aggregate error', (t) => {
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new AggregateError([new Error()]), new AggregateError([]))
+  )
+
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        new AggregateError([]),
+        new AggregateError([new Error()]),
+        'should fail'
+      ),
+    /should fail/
+  )
+})

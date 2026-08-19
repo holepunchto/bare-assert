@@ -354,7 +354,8 @@ function deepStrictEqualBuffer(a, b) {
 function deepStrictEqualError(a, b, partial, memo) {
   return (
     deepStrictEqualValue(a.name, b.name, partial, memo) &&
-    deepStrictEqualValue(a.message, b.message, partial, memo) &&
+    ((partial === true && b.message === '') ||
+      deepStrictEqualValue(a.message, b.message, partial, memo)) &&
     deepStrictEqualObjectKeys(a, b, ['cause', 'errors'], partial, memo) &&
     deepStrictEqualObject(a, b, partial, memo)
   )
@@ -446,8 +447,9 @@ function deepStrictEqualObjectKeys(a, b, keys, partial, memo) {
     const hasA = key in a
     const hasB = key in b
 
+    if (partial === true && !hasB) continue
     if ((hasA ^ hasB) === 1) return false
-    if (hasA && hasB && !deepStrictEqualValue(a[key], b[key], partial, memo)) return false
+    if (hasA && !deepStrictEqualValue(a[key], b[key], partial, memo)) return false
   }
 
   return true

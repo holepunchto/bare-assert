@@ -1472,8 +1472,43 @@ test('partialDeepStrictEqual, basic', (t) => {
   )
 })
 
+test('partialDeepStrictEqual, map', (t) => {
+  const foo = new Map([
+    [{ a: 1 }, 'value1'],
+    [{ a: 2 }, 'value2'],
+    [{ a: 2 }, 'value3'],
+    [{ a: 2 }, 'value3'],
+    [{ a: 2 }, 'value4'],
+    [{ a: 1 }, 'value2']
+  ])
+
+  const bar = new Map([
+    [{ a: 2 }, 'value3'],
+    [{ a: 1 }, 'value1'],
+    [{ a: 2 }, 'value3'],
+    [{ a: 1 }, 'value2']
+  ])
+
+  t.execution(() => assert.partialDeepStrictEqual(foo, bar))
+})
+
 test('partialDeepStrictEqual, sparse array', (t) => {
   t.execution(() => assert.partialDeepStrictEqual([1, , , undefined, , 3], [1, , undefined, 3]))
+
+  t.execution(() => {
+    const foo = new Array(15)
+    foo[0] = 1
+    foo[1] = 2
+    foo[5] = 100n
+    foo[10] = 3
+
+    const bar = new Array(12)
+    bar[0] = 1
+    bar[1] = 2
+    bar[5] = 3
+
+    assert.partialDeepStrictEqual(foo, bar)
+  })
 
   t.exception(
     () => assert.partialDeepStrictEqual([1, , , , 3], [1, , undefined, 3], 'should fail'),
@@ -1523,6 +1558,18 @@ test('partialDeepStrictEqual, typed array', (t) => {
   )
 })
 
+test('partialDeepStrictEqual, typed array, float', (t) => {
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        new Float16Array([+0.0]),
+        new Float16Array([-0.0]),
+        'should fail'
+      ),
+    /should fail/
+  )
+})
+
 test('partialDeepStrictEqual, array, non-enumerable symbol', (t) => {
   const foo = [1, 2, 3]
 
@@ -1535,5 +1582,5 @@ test('partialDeepStrictEqual, array, non-enumerable symbol', (t) => {
 
   bar[Symbol.for('test')] = 'test'
 
-  t.exception(() => assert.partialDeepStrictEqual(foo, bar))
+  t.exception(() => assert.partialDeepStrictEqual(foo, bar, 'should fail'), /should fail/)
 })

@@ -380,7 +380,7 @@ function deepStrictEqualArrayUnordered(a, b, partial, memo) {
     for (let j = 0; j < a.length; j++) {
       const itemA = a[j]
 
-      if (deepStrictEqualValue(itemA, itemB, partial, memo)) {
+      if (deepStrictEqualValue(itemA, itemB, false, memo)) {
         found = true
 
         a.splice(j, 1)
@@ -467,8 +467,9 @@ function deepStrictEqualObjectKeys(a, b, keys, partial, memo) {
 // The key counts have already been compared, so only the values are left.
 function deepStrictEqualObject(a, b, partial, memo) {
   const aKeys = getEnumerableKeys(a)
+  const bKeys = getEnumerableKeys(b)
 
-  for (const key of getEnumerableKeys(b)) {
+  for (const key of bKeys) {
     // Do not test indexes when partial
     if (partial === true && typeof key === 'string' && !isNaN(key)) continue
 
@@ -488,15 +489,12 @@ function partialDeepStrictEqualArray(a, b, partial, memo) {
   for (let i = 0; i < b.length; i++) {
     let found = false
 
-    const itemB = b[i]
-    const isSparseB = !(i in b)
+    if (!(i in b)) continue // Ignore hole in array
 
     while (++j < a.length) {
-      const itemA = a[j]
-      const isSparseA = !(j in a)
+      if (!(j in a)) continue // Ignore hole in array
 
-      if ((isSparseA ^ isSparseB) === 1) continue
-      else if (isSparseA || deepStrictEqualValue(itemA, itemB, partial, memo)) {
+      if (deepStrictEqualValue(a[j], b[i], partial, memo)) {
         found = true
 
         break
@@ -517,12 +515,8 @@ function partialDeepStrictEqualBuffer(a, b) {
   for (let i = 0; i < b.length; i++) {
     let found = false
 
-    const itemB = b[i]
-
     while (++j < a.length) {
-      const itemA = a[j]
-
-      if (itemA === itemB) {
+      if (Object.is(a[j], b[i])) {
         found = true
 
         break

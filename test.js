@@ -1562,8 +1562,8 @@ test('partialDeepStrictEqual, typed array, float', (t) => {
   t.exception(
     () =>
       assert.partialDeepStrictEqual(
-        new Float16Array([+0.0]),
-        new Float16Array([-0.0]),
+        new Float16Array([+0.0]), // lunte-disable-line no-undef
+        new Float16Array([-0.0]), // lunte-disable-line no-undef
         'should fail'
       ),
     /should fail/

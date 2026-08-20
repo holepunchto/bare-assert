@@ -283,12 +283,17 @@ function deepStrictEqualValue(a, b, partial = false, memo = new Memoization()) {
 
   if (type.isWeakMap() || type.isWeakSet() || type.isPromise()) return a === b
 
-  if (Buffer.isBuffer(a)) return deepStrictEqualBuffer(a, b)
-  if (type.isArrayBuffer()) return deepStrictEqualBuffer(new Uint8Array(a), new Uint8Array(b))
+  if (Buffer.isBuffer(a)) return deepStrictEqualBuffer(a, b, partial)
+
+  if (type.isArrayBuffer()) {
+    return deepStrictEqualBuffer(new Uint8Array(a), new Uint8Array(b), partial)
+  }
+
   if (type.isDataView()) {
     return deepStrictEqualBuffer(
       new Uint8Array(a.buffer, a.byteOffset, a.byteLength),
-      new Uint8Array(b.buffer, b.byteOffset, b.byteLength)
+      new Uint8Array(b.buffer, b.byteOffset, b.byteLength),
+      partial
     )
   }
 
@@ -303,11 +308,13 @@ function deepStrictEqualValue(a, b, partial = false, memo = new Memoization()) {
     memo.add(a, b)
   }
 
+  if (partial === true && type.isArray()) {
+    if (!partialDeepStrictEqualArray(a, b, partial, memo)) return false
+  }
+
   let result
 
-  if (partial === true && type.isArray()) {
-    result = partialDeepStrictEqualArray(a, b, partial, memo)
-  } else if (type.isError()) result = deepStrictEqualError(a, b, partial, memo)
+  if (type.isError()) result = deepStrictEqualError(a, b, partial, memo)
   else if (type.isMap()) result = deepStrictEqualMap(a, b, partial, memo)
   else if (type.isSet()) result = deepStrictEqualSet(a, b, partial, memo)
   else result = deepStrictEqualObject(a, b, partial, memo)
@@ -331,7 +338,7 @@ function deepStrictEqualShallow(a, b, type, prototype, partial) {
   } else if (type.isRegExp()) {
     if (a.lastIndex !== b.lastIndex || a.flags !== b.flags || a.source !== b.source) return false
   } else if (type.isTypedArray()) {
-    if (!deepStrictEqualBuffer(a, b)) return false
+    if (!deepStrictEqualBuffer(a, b, partial)) return false
   } else if (type.isDate()) {
     if (!Object.is(a.getTime(), b.getTime())) return false
   }
@@ -347,7 +354,9 @@ function deepStrictEqualShallow(a, b, type, prototype, partial) {
   return getEnumerableKeys(a).length === getEnumerableKeys(b).length
 }
 
-function deepStrictEqualBuffer(a, b) {
+function deepStrictEqualBuffer(a, b, partial) {
+  if (partial === true) return partialDeepStrictEqualBuffer(a, b)
+
   return a.byteLength === b.byteLength && Buffer.compare(a, b) === 0
 }
 
@@ -458,6 +467,9 @@ function deepStrictEqualObjectKeys(a, b, keys, partial, memo) {
 // The key counts have already been compared, so only the values are left.
 function deepStrictEqualObject(a, b, partial, memo) {
   for (const key of getEnumerableKeys(b)) {
+    // Do not test indexes when partial
+    if (partial === true && typeof key === 'string' && !isNaN(key)) continue
+
     if (!(key in a) || !deepStrictEqualValue(a[key], b[key], partial, memo)) return false
   }
 
@@ -465,6 +477,8 @@ function deepStrictEqualObject(a, b, partial, memo) {
 }
 
 function partialDeepStrictEqualArray(a, b, partial, memo) {
+  if (b.length > a.length) return false
+
   let j = -1
 
   for (let i = 0; i < b.length; i++) {
@@ -479,6 +493,32 @@ function partialDeepStrictEqualArray(a, b, partial, memo) {
 
       if ((isSparseA ^ isSparseB) === 1) continue
       else if (isSparseA || deepStrictEqualValue(itemA, itemB, partial, memo)) {
+        found = true
+
+        break
+      }
+    }
+
+    if (found === false) return false
+  }
+
+  return true
+}
+
+function partialDeepStrictEqualBuffer(a, b) {
+  if (b.byteLength > a.byteLength) return false
+
+  let j = -1
+
+  for (let i = 0; i < b.length; i++) {
+    let found = false
+
+    const itemB = b[i]
+
+    while (++j < a.length) {
+      const itemA = a[j]
+
+      if (itemA === itemB) {
         found = true
 
         break

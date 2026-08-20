@@ -1516,3 +1516,9 @@ test('partialDeepStrictEqual, error, aggregate error', (t) => {
     /should fail/
   )
 })
+
+test('partialDeepStrictEqual, typed array', (t) => {
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Uint8Array([1, 2, 3, 4, 5]), new Uint8Array([1, 2, 3, 5]))
+  )
+})

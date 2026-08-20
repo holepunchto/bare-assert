@@ -466,11 +466,15 @@ function deepStrictEqualObjectKeys(a, b, keys, partial, memo) {
 
 // The key counts have already been compared, so only the values are left.
 function deepStrictEqualObject(a, b, partial, memo) {
+  const aKeys = getEnumerableKeys(a)
+
   for (const key of getEnumerableKeys(b)) {
     // Do not test indexes when partial
     if (partial === true && typeof key === 'string' && !isNaN(key)) continue
 
-    if (!(key in a) || !deepStrictEqualValue(a[key], b[key], partial, memo)) return false
+    if (!aKeys.includes(key) || !deepStrictEqualValue(a[key], b[key], partial, memo)) {
+      return false
+    }
   }
 
   return true

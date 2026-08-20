@@ -1522,3 +1522,18 @@ test('partialDeepStrictEqual, typed array', (t) => {
     assert.partialDeepStrictEqual(new Uint8Array([1, 2, 3, 4, 5]), new Uint8Array([1, 2, 3, 5]))
   )
 })
+
+test('partialDeepStrictEqual, array, non-enumerable symbol', (t) => {
+  const foo = [1, 2, 3]
+
+  Object.defineProperty(foo, Symbol.for('test'), {
+    value: 'test',
+    enumerable: false
+  })
+
+  const bar = [1, 2, 3]
+
+  bar[Symbol.for('test')] = 'test'
+
+  t.exception(() => assert.partialDeepStrictEqual(foo, bar))
+})

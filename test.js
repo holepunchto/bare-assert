@@ -2091,8 +2091,8 @@ test('partialDeepStrictEqual, node.js test suite', function (t) {
       },
       {
         description: 'throws when comparing Float16Array([+0.0]) with Float16Array([-0.0])',
-        actual: new Float16Array([+0.0]),
-        expected: new Float16Array([-0.0])
+        actual: new Float16Array([+0.0]), // lunte-disable-line no-undef
+        expected: new Float16Array([-0.0]) // lunte-disable-line no-undef
       },
       {
         description: 'throws when comparing Float32Array([+0.0]) with Float32Array([-0.0])',

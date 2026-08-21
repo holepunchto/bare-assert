@@ -290,7 +290,7 @@ function deepStrictEqualValue(a, b, partial = false, memo = new Memoization()) {
 
   if (Buffer.isBuffer(a)) return deepStrictEqualBuffer(a, b, partial)
 
-  if (type.isArrayBuffer()) {
+  if (type.isArrayBuffer() || type.isSharedArrayBuffer()) {
     return deepStrictEqualBuffer(new Uint8Array(a), new Uint8Array(b), partial)
   }
 

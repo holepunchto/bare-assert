@@ -1492,6 +1492,12 @@ test('partialDeepStrictEqual, map', (t) => {
   t.execution(() => assert.partialDeepStrictEqual(foo, bar))
 })
 
+test('partialDeepStrictEqual, set', (t) => {
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Set([{ foo: 1, bar: 2 }]), new Set([{ foo: 1 }]))
+  )
+})
+
 test('partialDeepStrictEqual, sparse array', (t) => {
   t.execution(() => assert.partialDeepStrictEqual([1, , , undefined, , 3], [1, , undefined, 3]))
 
@@ -1583,4 +1589,24 @@ test('partialDeepStrictEqual, array, non-enumerable symbol', (t) => {
   bar[Symbol.for('test')] = 'test'
 
   t.exception(() => assert.partialDeepStrictEqual(foo, bar, 'should fail'), /should fail/)
+})
+
+test('partialDeepStrictEqual, object, numeric keys', (t) => {
+  t.exception(() => assert.partialDeepStrictEqual({ 0: 'a', 1: 'b' }, { 1: 'c' }))
+})
+
+test('partialDeepStrictEqual, SharedArrayBuffer', (t) => {
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new SharedArrayBuffer(10), new SharedArrayBuffer(5))
+  )
+
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        new SharedArrayBuffer(5),
+        new SharedArrayBuffer(10),
+        'should fail'
+      ),
+    /should fail/
+  )
 })

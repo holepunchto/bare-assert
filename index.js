@@ -491,9 +491,9 @@ function deepStrictEqualObject(a, b, type, partial, memo) {
   const indexedPartial = partial === true && (type.isArray() || type.isTypedArray())
 
   for (const key of bKeys) {
-    // the indexes of partial objects are tested at
+    // the number indexes of partial objects are tested at
     // partialDeepStrictEqualArray and partialDeepStrictEqualBuffer
-    if (indexedPartial && typeof key === 'string' && !isNaN(key)) continue
+    if (indexedPartial && typeof key === 'string' && /^\d+$/.test(key)) continue
 
     if (!aKeys.includes(key) || !deepStrictEqualValue(a[key], b[key], partial, memo)) {
       return false

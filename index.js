@@ -390,8 +390,6 @@ function deepStrictEqualError(a, b, type, partial, memo) {
 }
 
 function deepStrictEqualArrayUnordered(a, b, partial, memo) {
-  if (partial === false && a.length !== b.length) return false
-
   for (let i = 0; i < b.length; i++) {
     let found = false
     const itemB = b[i]

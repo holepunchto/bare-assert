@@ -397,12 +397,26 @@ function deepStrictEqualArrayUnordered(a, b, partial, memo) {
     for (let j = 0; j < a.length; j++) {
       const itemA = a[j]
 
-      if (deepStrictEqualValue(itemA, itemB, partial, memo)) {
+      if (deepStrictEqualValue(itemA, itemB, false, memo)) {
         found = true
 
         a.splice(j, 1)
 
         break
+      }
+    }
+
+    if (partial === true && found === false) {
+      for (let j = 0; j < a.length; j++) {
+        const itemA = a[j]
+
+        if (deepStrictEqualValue(itemA, itemB, true, memo)) {
+          found = true
+
+          a.splice(j, 1)
+
+          break
+        }
       }
     }
 

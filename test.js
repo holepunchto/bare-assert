@@ -1496,6 +1496,13 @@ test('partialDeepStrictEqual, set', (t) => {
   t.execution(() =>
     assert.partialDeepStrictEqual(new Set([{ foo: 1, bar: 2 }]), new Set([{ foo: 1 }]))
   )
+
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Set([{ foo: 1, bar: 2 }, { foo: 1 }]),
+      new Set([{ foo: 1 }, { foo: 1, bar: 2 }])
+    )
+  )
 })
 
 test('partialDeepStrictEqual, sparse array', (t) => {

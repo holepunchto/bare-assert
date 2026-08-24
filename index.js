@@ -309,7 +309,10 @@ function deepStrictEqualValue(a, b, partial = false, memo = new Memoization()) {
   }
 
   if (partial === true && type.isArray()) {
-    if (!partialDeepStrictEqualArray(a, b, partial, memo)) return false
+    if (!partialDeepStrictEqualArray(a, b, partial, memo)) {
+      memo.remove(a, b)
+      return false
+    }
   }
 
   let result

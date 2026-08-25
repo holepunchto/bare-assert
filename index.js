@@ -102,6 +102,68 @@ exports.doesNotMatch = function doesNotMatch(actual, regexp, message) {
   assertFail({ message, actual, expected: regexp, operator: 'doesNotMatch' }, doesNotMatch)
 }
 
+exports.throws = function throws(fn, error, message) {
+  if (typeof error === 'string') {
+    message = error
+    error = undefined
+  }
+
+  const noException = Symbol()
+  let fnError = noException
+
+  try {
+    fn()
+  } catch (err) {
+    fnError = err
+  }
+
+  if (fnError === noException) {
+    if (message === undefined) message = 'Executed'
+
+    assertFail({ message, operator: 'throws' }, throws)
+  }
+
+  if (error === undefined) return
+
+  const errorType = getType(error)
+
+  if (errorType.isRegExp()) {
+    if (error.test(fnError)) return
+  } else if (errorType.isFunction()) {
+    if (error(fnError) === true) return
+    if (error.prototype !== undefined && fnError instanceof error) return
+  } else if (errorType.isError()) {
+    if (deepStrictEqualError(fnError, error)) return
+  } else if (errorType.isObject()) {
+    if (deepStrictEqualErrorObject(fnError, error)) return
+  }
+
+  assertFail({ message, actual: fnError, expected: error, operator: 'throws' }, throws)
+}
+
+exports.doesNotThrow = function doesNotThrow(fn, error, message) {
+  if (typeof error === 'string') {
+    message = error
+    error = undefined
+  }
+
+  const noException = Symbol()
+  let fnError = noException
+
+  try {
+    fn()
+  } catch (err) {
+    fnError = err
+  }
+
+  if (fnError === noException) return
+
+  if (error === undefined) throw fnError
+  if (error.prototype !== undefined && !(fnError instanceof error)) throw fnError
+
+  assertFail({ message, actual: fn, expected: error, operator: 'doesNotThrow' }, doesNotThrow)
+}
+
 exports.ifError = function ifError(actual) {
   if (actual === null || actual === undefined) return
 
@@ -202,6 +264,29 @@ function deepStrictEqualError(a, b, memo) {
     deepStrictEqualObjectKeys(a, b, ['cause', 'errors'], memo) &&
     deepStrictEqualObject(a, b, memo)
   )
+}
+
+function deepStrictEqualErrorObject(error, object, memo = new Memoization()) {
+  const objectKeys = getEnumerableKeys(object)
+  const errorKeys = getEnumerableKeys(error)
+
+  errorKeys.push('name')
+  errorKeys.push('message')
+
+  for (const key of objectKeys) {
+    if (!errorKeys.includes(key)) return false
+
+    const errorValue = error[key]
+    const objectValue = object[key]
+
+    if (getType(objectValue).isRegExp() && getType(errorValue).isString()) {
+      if (!objectValue.test(errorValue)) return false
+    } else {
+      if (!deepStrictEqualValue(errorValue, objectValue, memo)) return false
+    }
+  }
+
+  return true
 }
 
 function deepStrictEqualArrayUnordered(a, b, memo) {

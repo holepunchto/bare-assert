@@ -201,21 +201,25 @@ test('throws, custom validation, object', (t) => {
   }, /should fail/)
 })
 
-test('doesNotThrow', (t) => {
-  t.exception.all(() => {
-    assert.doesNotThrow(
-      () => {
-        throw new TypeError('Wrong value')
-      },
-      SyntaxError,
-      'should fail'
-    )
-  }, /Wrong value/)
+test('doesNotThrow, basic', (t) => {
+  t.execution(() => {
+    assert.doesNotThrow(() => {})
+  })
 
+  t.exception(
+    () =>
+      assert.doesNotThrow(() => {
+        throw (new Error('Foo'), 'should fail')
+      }),
+    /should fail/
+  )
+})
+
+test('doesNotThrow, constructor', (t) => {
   t.exception(() => {
     assert.doesNotThrow(
       () => {
-        throw new TypeError('Wrong value')
+        throw new TypeError('Foo')
       },
       TypeError,
       'should fail'
@@ -223,14 +227,80 @@ test('doesNotThrow', (t) => {
   }, /should fail/)
 
   t.exception(() => {
-    assert.doesNotThrow(
-      () => {
-        throw new TypeError('Wrong value')
+    assert.doesNotThrow(() => {
+      throw new Error('Foo')
+    }, TypeError)
+  }, /Foo/)
+})
+
+test('rejects, basic', (t) => {
+  t.plan(2)
+
+  t.execution(() => {
+    assert.rejects(async () => {
+      throw new Error()
+    })
+  })
+
+  t.exception(() => assert.rejects(async () => {}, 'should fail'), /should fail/)
+})
+
+test('rejects, promise', (t) => {
+  t.plan(2)
+
+  t.execution(() => {
+    assert.rejects(Promise.reject(new Error('Foo')), /Foo/)
+  })
+
+  t.exception(
+    () => assert.rejects(Promise.reject(new Error('Bar')), /Foo/, 'should fail'),
+    /should fail/
+  )
+})
+
+test('rejects, synchronous throw', (t) => {
+  t.plan(1)
+
+  const promise = assert.rejects(() => {
+    throw new Error('Foo')
+  })
+
+  t.exception(async () => await promise, /Foo/)
+})
+
+test('rejects, object validation', async (t) => {
+  t.plan(2)
+
+  t.execution(() => {
+    assert.rejects(
+      async () => {
+        throw new TypeError('Foo')
       },
-      /Wrong value/,
-      'should fail'
+      { name: 'TypeError', message: 'Foo' }
     )
-  }, /should fail/)
+  })
+
+  t.exception(
+    () =>
+      assert.rejects(
+        async () => {
+          throw new TypeError('Foo')
+        },
+        { name: 'Error', message: 'Bar' },
+        'should fail'
+      ),
+    /should fail/
+  )
+})
+
+test('doesNotReject, basic', (t) => {
+  t.plan(2)
+
+  t.execution(() => {
+    assert.doesNotReject(Promise.resolve('Foo'))
+  })
+
+  t.exception(() => assert.doesNotReject(Promise.reject('Foo'), 'should fail'), /should fail/)
 })
 
 test('ifError', (t) => {

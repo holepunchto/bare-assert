@@ -27,6 +27,40 @@ declare namespace assert {
 
   export function doesNotMatch(actual: string, expected: RegExp, message?: string | Error): void
 
+  export function throws(fn: () => unknown, message?: string | Error): void
+  export function throws(
+    fn: () => unknown,
+    error: ((err: unknown) => boolean) | RegExp | Error | object,
+    message?: string | Error
+  ): void
+
+  export function doesNotThrow(fn: () => unknown, message?: string | Error): void
+  export function doesNotThrow(
+    fn: () => unknown,
+    error: ((err: unknown) => boolean) | RegExp | Error | object,
+    message?: string | Error
+  ): void
+
+  export function rejects(
+    fn: (() => Promise<unknown>) | Promise<unknown>,
+    message?: string | Error
+  ): void
+  export function rejects(
+    fn: (() => Promise<unknown>) | Promise<unknown>,
+    error: ((err: unknown) => boolean) | RegExp | Error | object,
+    message?: string | Error
+  ): void
+
+  export function doesNotReject(
+    fn: (() => Promise<unknown>) | Promise<unknown>,
+    message?: string | Error
+  ): void
+  export function doesNotReject(
+    fn: (() => Promise<unknown>) | Promise<unknown>,
+    error: ((err: unknown) => boolean) | RegExp | Error | object,
+    message?: string | Error
+  ): void
+
   export function ifError(actual: any): void
 }
 

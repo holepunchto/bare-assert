@@ -131,7 +131,7 @@ function assertErrorObject(actual, expected, memo = new Memoization()) {
     const actualValue = actual[key]
     const expectedValue = expected[key]
 
-    if (getType(actualValue).isString() && getType(expectedValue).isRegExp()) {
+    if (typeof actualValue === 'string' && getType(expectedValue).isRegExp()) {
       if (!expectedValue.test(actualValue)) return false
     } else {
       if (!deepStrictEqualValue(actualValue, expectedValue, memo)) return false
@@ -199,7 +199,7 @@ exports.rejects = async function rejects(fn, error, message) {
   let actual = noException
 
   // Normalize to Promise if async, and throw immediately if a synchronous error occurs
-  if (getType(fn).isFunction()) fn = fn()
+  if (typeof fn === 'function') fn = fn()
 
   try {
     await fn
@@ -228,7 +228,7 @@ exports.doesNotReject = async function doesNotReject(fn, error, message) {
   let actual = noException
 
   // Normalize to Promise if async, and throw immediately if a synchronous error occurs
-  if (getType(fn).isFunction()) fn = fn()
+  if (typeof fn === 'function') fn = fn()
 
   try {
     await fn

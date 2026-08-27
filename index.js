@@ -102,6 +102,147 @@ exports.doesNotMatch = function doesNotMatch(actual, regexp, message) {
   assertFail({ message, actual, expected: regexp, operator: 'doesNotMatch' }, doesNotMatch)
 }
 
+function assertError(actual, expected) {
+  if (expected === undefined) return true
+
+  const type = getType(expected)
+
+  if (type.isRegExp()) {
+    if (expected.test(actual)) return true
+  } else if (type.isFunction()) {
+    if (expected(actual) === true) return true
+    if (expected.prototype !== undefined && actual instanceof expected) return true
+  } else if (type.isError()) {
+    if (deepStrictEqualError(actual, expected)) return true
+  } else if (type.isObject()) {
+    if (assertErrorObject(actual, expected)) return true
+  }
+
+  return false
+}
+
+function assertErrorObject(actual, expected, memo = new Memoization()) {
+  const actualKeys = ['name', 'message', ...getEnumerableKeys(actual)]
+  const expectedKeys = getEnumerableKeys(expected)
+
+  for (const key of expectedKeys) {
+    if (!actualKeys.includes(key)) return false
+
+    const actualValue = actual[key]
+    const expectedValue = expected[key]
+
+    if (typeof actualValue === 'string' && getType(expectedValue).isRegExp()) {
+      if (!expectedValue.test(actualValue)) return false
+    } else {
+      if (!deepStrictEqualValue(actualValue, expectedValue, memo)) return false
+    }
+  }
+
+  return true
+}
+
+exports.throws = function throws(fn, error, message) {
+  if (typeof error === 'string') {
+    message = error
+    error = undefined
+  }
+
+  const noException = Symbol()
+  let actual = noException
+
+  try {
+    fn()
+  } catch (err) {
+    actual = err
+  }
+
+  if (actual === noException) {
+    if (message === undefined) message = 'Executed'
+
+    assertFail({ message, operator: 'throws' }, throws)
+  }
+
+  if (assertError(actual, error)) return
+
+  assertFail({ message, actual, expected: error, operator: 'throws' }, throws)
+}
+
+exports.doesNotThrow = function doesNotThrow(fn, error, message) {
+  if (typeof error === 'string') {
+    message = error
+    error = undefined
+  }
+
+  const noException = Symbol()
+  let actual = noException
+
+  try {
+    fn()
+  } catch (err) {
+    actual = err
+  }
+
+  if (actual === noException) return
+
+  if (!assertError(actual, error)) throw actual
+
+  assertFail({ message, actual, expected: error, operator: 'doesNotThrow' }, doesNotThrow)
+}
+
+exports.rejects = async function rejects(fn, error, message) {
+  if (typeof error === 'string') {
+    message = error
+    error = undefined
+  }
+
+  const noException = Symbol()
+  let actual = noException
+
+  // Normalize to Promise if async, and throw immediately if a synchronous error occurs
+  if (typeof fn === 'function') fn = fn()
+
+  try {
+    await fn
+  } catch (err) {
+    actual = err
+  }
+
+  if (actual === noException) {
+    if (message === undefined) message = 'Executed'
+
+    assertFail({ message, operator: 'rejects' }, rejects)
+  }
+
+  if (assertError(actual, error)) return
+
+  assertFail({ message, actual, expected: error, operator: 'rejects' }, rejects)
+}
+
+exports.doesNotReject = async function doesNotReject(fn, error, message) {
+  if (typeof error === 'string') {
+    message = error
+    error = undefined
+  }
+
+  const noException = Symbol()
+  let actual = noException
+
+  // Normalize to Promise if async, and throw immediately if a synchronous error occurs
+  if (typeof fn === 'function') fn = fn()
+
+  try {
+    await fn
+  } catch (err) {
+    actual = err
+  }
+
+  if (actual === noException) return
+
+  if (!assertError(actual, error)) throw actual
+
+  assertFail({ message, actual, expected: error, operator: 'doesNotReject' }, doesNotReject)
+}
+
 exports.ifError = function ifError(actual) {
   if (actual === null || actual === undefined) return
 

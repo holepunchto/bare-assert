@@ -438,6 +438,26 @@ test('deepStrictEqual, object, getter', (t) => {
   t.exception(() => assert.deepStrictEqual(obj, { foo: 'baz' }, 'should fail'), /should fail/)
 })
 
+// A pair that is the same reference is equal without being walked, so a getter
+// reachable only through it is never invoked. Each case needs its own object,
+// or a failure in one leaves state behind that decides the next.
+test('deepStrictEqual, object, getter, identical reference', (t) => {
+  const foo = {
+    get bar() {
+      throw new Error('should not be read')
+    }
+  }
+
+  const baz = {
+    get bar() {
+      throw new Error('should not be read')
+    }
+  }
+
+  t.execution(() => assert.deepStrictEqual(foo, foo))
+  t.execution(() => assert.deepStrictEqual({ bar: baz }, { bar: baz }))
+})
+
 test('deepStrictEqual, object, prototype', (t) => {
   const prototype = { __proto__: null }
   const a = { constructor: 42, foo: 'bar' }
@@ -1400,6 +1420,31 @@ test('deepStrictEqual, recursive set', (t) => {
   t.execution(() => assert.deepStrictEqual(a, b))
 })
 
+// A comparison that throws part way through must not leave the pairs it was
+// walking behind, where a later comparison would mistake them for a cycle.
+test('deepStrictEqual, comparison state', (t) => {
+  const a = {
+    foo: {
+      get bar() {
+        throw new Error('boom')
+      }
+    }
+  }
+
+  const b = {
+    foo: {
+      get bar() {
+        throw new Error('boom')
+      }
+    }
+  }
+
+  t.exception(() => assert.deepStrictEqual(a, b), /boom/)
+  t.exception(() => assert.deepStrictEqual(a, b), /boom/)
+  t.exception(() => assert.partialDeepStrictEqual(a, b), /boom/)
+  t.exception(() => assert.notDeepStrictEqual(a, b, 'should not be equal'), /boom/)
+})
+
 test('notDeepStrictEqual', (t) => {
   t.execution(() => assert.notDeepStrictEqual({ foo: 1 }, { foo: 2 }))
   t.execution(() => assert.notDeepStrictEqual([1, 2], [1, 2, 3]))
@@ -1472,6 +1517,147 @@ test('partialDeepStrictEqual, basic', (t) => {
   )
 })
 
+// Partial equality compares the kind of a value, not its prototype, so a class
+// instance and a plain object with the same properties are equal.
+test('partialDeepStrictEqual, prototype', (t) => {
+  class MyClass {
+    constructor(value) {
+      this.value = value
+    }
+  }
+
+  class Base {
+    constructor() {
+      this.foo = 1
+    }
+  }
+
+  class Derived extends Base {
+    constructor() {
+      super()
+      this.bar = 2
+    }
+  }
+
+  class MyMap extends Map {}
+
+  class MyArray extends Array {}
+
+  t.execution(() => assert.partialDeepStrictEqual(new MyClass('foo'), { value: 'foo' }))
+  t.execution(() => assert.partialDeepStrictEqual({ value: 'foo' }, new MyClass('foo')))
+  t.execution(() => assert.partialDeepStrictEqual(new MyClass('foo'), {}))
+  t.execution(() => assert.partialDeepStrictEqual(new Derived(), new Base()))
+  t.execution(() =>
+    assert.partialDeepStrictEqual(Object.assign(Object.create(null), { foo: 'bar' }), {
+      foo: 'bar'
+    })
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      { foo: 'bar' },
+      Object.assign(Object.create(null), { foo: 'bar' })
+    )
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new MyMap([
+        ['foo', 1],
+        ['bar', 2]
+      ]),
+      new Map([['foo', 1]])
+    )
+  )
+  t.execution(() => assert.partialDeepStrictEqual(MyArray.from([1, 2, 3]), [1, 3]))
+  t.execution(() => assert.partialDeepStrictEqual([1, 2, 3], MyArray.from([1, 3])))
+
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Base(), new Derived(), 'should fail'),
+    /should fail/
+  )
+})
+
+test('partialDeepStrictEqual, prototype, nested', (t) => {
+  class MyClass {
+    constructor(value) {
+      this.value = value
+    }
+  }
+
+  t.execution(() =>
+    assert.partialDeepStrictEqual({ foo: new MyClass('bar') }, { foo: { value: 'bar' } })
+  )
+  t.execution(() => assert.partialDeepStrictEqual([new MyClass('foo')], [{ value: 'foo' }]))
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Set([new MyClass('foo')]), new Set([{ value: 'foo' }]))
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Map([['foo', new MyClass('bar')]]),
+      new Map([['foo', { value: 'bar' }]])
+    )
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Map([[new MyClass('foo'), 1]]),
+      new Map([[{ value: 'foo' }, 1]])
+    )
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Error('message', { cause: new MyClass('foo') }),
+      new Error('message', { cause: { value: 'foo' } })
+    )
+  )
+})
+
+// Ignoring the prototype does not make values of different kinds comparable.
+test('partialDeepStrictEqual, prototype, differing kind', (t) => {
+  class Tagged {
+    constructor() {
+      this.value = 'foo'
+    }
+
+    get [Symbol.toStringTag]() {
+      return 'Tagged'
+    }
+  }
+
+  t.exception(() => assert.partialDeepStrictEqual({}, [], 'should fail'), /should fail/)
+  t.exception(() => assert.partialDeepStrictEqual([1], { 0: 1 }, 'should fail'), /should fail/)
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Map([['foo', 1]]), { foo: 1 }, 'should fail'),
+    /should fail/
+  )
+  t.exception(() => assert.partialDeepStrictEqual(new Set([1]), [1], 'should fail'), /should fail/)
+  t.exception(() => assert.partialDeepStrictEqual(new Date(0), {}, 'should fail'), /should fail/)
+  t.exception(() => assert.partialDeepStrictEqual(/foo/, {}, 'should fail'), /should fail/)
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Uint8Array([1]), [1], 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(new String('foo'), 'foo', 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Tagged(), { value: 'foo' }, 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual({ value: 'foo' }, new Tagged(), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(new TypeError('message'), new Error('message'), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(function foo() {}, {}, 'should fail'),
+    /should fail/
+  )
+})
+
 test('partialDeepStrictEqual, map', (t) => {
   const foo = new Map([
     [{ a: 1 }, 'value1'],
@@ -1492,6 +1678,52 @@ test('partialDeepStrictEqual, map', (t) => {
   t.execution(() => assert.partialDeepStrictEqual(foo, bar))
 })
 
+// Partial equality is not transitive, so matching entries greedily can consume
+// the only entry a later expected entry could have matched.
+test('partialDeepStrictEqual, map, ambiguous object keys', (t) => {
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Map([
+        [{ a: 1 }, 0],
+        [{ a: 1, b: 1, c: 1 }, 1],
+        [{ a: 1, b: 1 }, 1],
+        [{ a: 1 }, 0]
+      ]),
+      new Map([
+        [{ b: 1 }, 1],
+        [{ a: 1, b: 1, c: 1 }, 1],
+        [{}, 0]
+      ])
+    )
+  )
+
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Map([
+        [{ a: 1, c: 1 }, 0],
+        [{ a: 1, b: 2 }, 0],
+        [{ a: 1 }, 1],
+        [{ a: 1, b: 1 }, 0]
+      ]),
+      new Map([
+        [{ b: 1 }, 0],
+        [{}, 0],
+        [{ a: 1, c: 1 }, 0]
+      ])
+    )
+  )
+
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        new Map([[{ a: 1 }, 'x']]),
+        new Map([[{ a: 1 }, 'y']]),
+        'should fail'
+      ),
+    /should fail/
+  )
+})
+
 test('partialDeepStrictEqual, set', (t) => {
   t.execution(() =>
     assert.partialDeepStrictEqual(new Set([{ foo: 1, bar: 2 }]), new Set([{ foo: 1 }]))
@@ -1502,6 +1734,49 @@ test('partialDeepStrictEqual, set', (t) => {
       new Set([{ foo: 1, bar: 2 }, { foo: 1 }]),
       new Set([{ foo: 1 }, { foo: 1, bar: 2 }])
     )
+  )
+})
+
+test('partialDeepStrictEqual, set, ambiguous members', (t) => {
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Set([
+        { a: 1, b: 1 },
+        { a: 1, c: 1 },
+        { a: 1, c: 1 },
+        { a: 1, b: 2 }
+      ]),
+      new Set([{ a: 1, b: 2 }, { a: 1 }, { a: 1, b: 1 }])
+    )
+  )
+
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Set([{ a: 2 }, { a: 1 }, { b: 1 }, { a: 1 }]),
+      new Set([{ b: 1 }, {}, { a: 2 }])
+    )
+  )
+
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Set([
+        { a: 1, c: 1 },
+        { a: 1, b: 2 },
+        { a: 1, b: 2 },
+        { a: 1, b: 1, c: 1 }
+      ]),
+      new Set([{ a: 1, b: 1 }, { a: 1 }, { a: 1, c: 1 }])
+    )
+  )
+
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        new Set([{ a: 1 }, { a: 1 }]),
+        new Set([{ a: 1 }, { b: 1 }]),
+        'should fail'
+      ),
+    /should fail/
   )
 })
 
@@ -1549,6 +1824,33 @@ test('partialDeepStrictEqual, error', (t) => {
   )
 })
 
+// An `undefined` property on the expected error is not compared, but an own
+// `cause` still has to be present on both sides.
+test('partialDeepStrictEqual, error, undefined property', (t) => {
+  const message = new Error('message')
+  message.message = undefined
+
+  const name = new Error('message')
+  name.name = undefined
+
+  t.execution(() => assert.partialDeepStrictEqual(new Error('message'), message))
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Error('message', { cause: 'boom' }),
+      new Error('message', { cause: undefined })
+    )
+  )
+
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Error('message'), name, 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Error('message'), new Error('other'), 'should fail'),
+    /should fail/
+  )
+})
+
 test('partialDeepStrictEqual, error, aggregate error', (t) => {
   t.execution(() =>
     assert.partialDeepStrictEqual(new AggregateError([new Error()]), new AggregateError([]))
@@ -1565,9 +1867,53 @@ test('partialDeepStrictEqual, error, aggregate error', (t) => {
   )
 })
 
+test('partialDeepStrictEqual, error, aggregate error, undefined errors', (t) => {
+  const expected = new AggregateError([], 'message')
+  expected.errors = undefined
+
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new AggregateError([new Error('inner')], 'message'), expected)
+  )
+})
+
 test('partialDeepStrictEqual, typed array', (t) => {
   t.execution(() =>
     assert.partialDeepStrictEqual(new Uint8Array([1, 2, 3, 4, 5]), new Uint8Array([1, 2, 3, 5]))
+  )
+})
+
+// A shorter expected typed array is matched against the bytes of the actual
+// one, not against its elements.
+test('partialDeepStrictEqual, typed array, byte subsequence', (t) => {
+  t.execution(() => assert.partialDeepStrictEqual(new Uint16Array([3, 1]), new Uint16Array([0])))
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Float64Array([0, 3, 2]), new Float64Array([0, 0]))
+  )
+  t.execution(() => assert.partialDeepStrictEqual(new Uint16Array([1, 2, 3]), new Uint16Array([2])))
+
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        new Uint16Array([1, 2]),
+        new Uint16Array([2, 1]),
+        'should fail'
+      ),
+    /should fail/
+  )
+})
+
+test('partialDeepStrictEqual, typed array, differing type', (t) => {
+  t.execution(() => assert.partialDeepStrictEqual(new Uint8Array([1, 2, 3]), Buffer.from([1])))
+  t.execution(() => assert.partialDeepStrictEqual(Buffer.from([1, 2, 3]), new Uint8Array([1])))
+
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Uint8Array([1, 2]), new Int8Array([1]), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(new Uint8Array([1, 2]), new Uint16Array([1]), 'should fail'),
+    /should fail/
   )
 })
 
@@ -1579,6 +1925,34 @@ test('partialDeepStrictEqual, typed array, float', (t) => {
         new Float16Array([-0.0]), // lunte-disable-line no-undef
         'should fail'
       ),
+    /should fail/
+  )
+})
+
+test('partialDeepStrictEqual, dataview', (t) => {
+  const dataView = (bytes, offset, length) => {
+    const { buffer } = new Uint8Array(bytes)
+
+    return length === undefined ? new DataView(buffer) : new DataView(buffer, offset, length)
+  }
+
+  t.execution(() => assert.partialDeepStrictEqual(dataView([1, 2]), dataView([1, 2])))
+  t.execution(() => assert.partialDeepStrictEqual(dataView([1, 2, 3]), dataView([3])))
+  t.execution(() => assert.partialDeepStrictEqual(dataView([1, 2]), dataView([])))
+  t.execution(() =>
+    assert.partialDeepStrictEqual(dataView([1, 2, 3, 4]), dataView([9, 2, 3, 9], 1, 2))
+  )
+
+  t.exception(
+    () => assert.partialDeepStrictEqual(dataView([1, 2]), dataView([3]), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(dataView([1]), dataView([1, 2]), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(dataView([1, 2, 3]), dataView([3, 1]), 'should fail'),
     /should fail/
   )
 })
@@ -1600,6 +1974,54 @@ test('partialDeepStrictEqual, array, non-enumerable symbol', (t) => {
 
 test('partialDeepStrictEqual, object, numeric keys', (t) => {
   t.exception(() => assert.partialDeepStrictEqual({ 0: 'a', 1: 'b' }, { 1: 'c' }))
+})
+
+// Only canonical array indexes are covered by the element comparison. Every
+// other digit-like key is an ordinary property and has to match.
+test('partialDeepStrictEqual, array, non-index keys', (t) => {
+  t.exception(
+    () => assert.partialDeepStrictEqual([1, 2, 3], Object.assign([], { '01': 5 }), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual([1, 2, 3], Object.assign([], { 4294967295: 5 }), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual([1, 2, 3], Object.assign([], { 4294967296: 5 }), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        Object.assign([1, 2], { '01': 5 }),
+        Object.assign([1], { '01': 6 }),
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        new Uint8Array([1, 2, 3]),
+        Object.assign(new Uint8Array([1]), { '01': 5 }),
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual([1, 2, 3], Object.assign([], { foo: 5 }), 'should fail'),
+    /should fail/
+  )
+
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      Object.assign([1, 2], { '01': 5 }),
+      Object.assign([1], { '01': 5 })
+    )
+  )
 })
 
 test('partialDeepStrictEqual, SharedArrayBuffer', (t) => {
@@ -2763,4 +3185,11 @@ test('partialDeepStrictEqual, node.js test suite', function (t) {
       t.execution(() => assert.partialDeepStrictEqual(actual, expected), description)
     }
   })
+})
+
+test('AssertionError', (t) => {
+  const err = new assert.AssertionError({ actual: 1, expected: 2, operator: '==' })
+
+  t.is(err.name, 'AssertionError')
+  t.is(err.code, 'ASSERTION')
 })

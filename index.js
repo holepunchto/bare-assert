@@ -24,7 +24,7 @@ class AssertionError extends Error {
   }
 
   get code() {
-    'ASSERTION'
+    return 'ASSERTION'
   }
 }
 

@@ -105,11 +105,13 @@ declare namespace assert {
   export function notStrictEqual(actual: any, expected: any, message?: string | Error): void
 
   /**
-   * Throw an `AssertionError` unless `actual` and `expected` are the same value recursively. Values
-   * must share a prototype, and are then compared by their own enumerable properties, descending
-   * into the values reachable from them. Boxed primitives, dates, regular expressions, errors,
-   * buffers, typed arrays, maps, and sets are each compared by what they hold; weak maps, weak
-   * sets, and promises are compared by reference. Cycles are handled.
+   * Throw an `AssertionError` unless `actual` and `expected` are the same value recursively. A pair
+   * that is not two objects is compared with `Object.is()`, which treats `NaN` as equal to `NaN`
+   * and `0` as distinct from `-0`. Two objects must share a prototype, and are then compared by
+   * their own enumerable properties, descending into the values reachable from them. Boxed
+   * primitives, dates, regular expressions, errors, buffers, typed arrays, maps, and sets are each
+   * compared by what they hold; weak maps, weak sets, and promises are compared by reference.
+   * Cycles are handled.
    * @param actual - The value produced.
    * @param expected - The value to compare `actual` against.
    * @param message - Custom message for the thrown error; if an `Error` instance, it is thrown
@@ -167,9 +169,11 @@ declare namespace assert {
   /**
    * Throw an `AssertionError` unless `fn` throws an error matching `error`.
    * @param fn - The function to call.
-   * @param error - What the thrown value must match: a predicate that returns `true`, a constructor
-   * the value is an instance of, a regular expression that matches it, or an error or object whose
-   * own enumerable properties it recursively matches.
+   * @param error - What the thrown value must match: a predicate that returns `true`; a constructor
+   * it is an instance of, which must be callable without `new`, so not an ES6 class; a regular
+   * expression that matches it; an `Error`, which it must deeply equal, down to having no own
+   * enumerable properties the `Error` does not; or a plain object, of which it need only match the
+   * properties named, deeply, or by regular expression against a string property.
    * @param message - Custom message for the thrown error; if an `Error` instance, it is thrown
    * directly instead of an `AssertionError`. Defaults to `'Executed'` when nothing was thrown.
    * @throws {AssertionError} thrown if `fn` does not throw, or throws something that does not match
@@ -194,9 +198,11 @@ declare namespace assert {
    * Throw an `AssertionError` if `fn` throws an error matching `error`. A thrown value that does
    * not match `error` is re-thrown as it is.
    * @param fn - The function to call.
-   * @param error - What the thrown value is checked against: a predicate that returns `true`, a
-   * constructor the value is an instance of, a regular expression that matches it, or an error or
-   * object whose own enumerable properties it recursively matches.
+   * @param error - What the thrown value is checked against: a predicate that returns `true`; a
+   * constructor it is an instance of, which must be callable without `new`, so not an ES6 class; a
+   * regular expression that matches it; an `Error`, which it must deeply equal, down to having no
+   * own enumerable properties the `Error` does not; or a plain object, of which it need only match
+   * the properties named, deeply, or by regular expression against a string property.
    * @param message - Custom message for the thrown error; if an `Error` instance, it is thrown
    * directly instead of an `AssertionError`.
    * @throws {AssertionError} thrown if `fn` throws something matching `error` (unless `message` is
@@ -228,9 +234,11 @@ declare namespace assert {
    * returned promise settles once the assertion has been made, so it must be awaited.
    * @param fn - The promise to await, or a function returning one; a function that throws
    * synchronously propagates rather than counting as a rejection.
-   * @param error - What the rejection reason must match: a predicate that returns `true`, a
-   * constructor the reason is an instance of, a regular expression that matches it, or an error or
-   * object whose own enumerable properties it recursively matches.
+   * @param error - What the rejection reason must match: a predicate that returns `true`; a
+   * constructor it is an instance of, which must be callable without `new`, so not an ES6 class; a
+   * regular expression that matches it; an `Error`, which it must deeply equal, down to having no
+   * own enumerable properties the `Error` does not; or a plain object, of which it need only match
+   * the properties named, deeply, or by regular expression against a string property.
    * @param message - Custom message for the error; if an `Error` instance, it is used directly
    * instead of an `AssertionError`. Defaults to `'Executed'` when nothing was rejected.
    * @returns A promise that resolves once the assertion has passed, and rejects with an
@@ -263,9 +271,11 @@ declare namespace assert {
    * has been made, so it must be awaited.
    * @param fn - The promise to await, or a function returning one; a function that throws
    * synchronously propagates rather than counting as a rejection.
-   * @param error - What the rejection reason is checked against: a predicate that returns `true`, a
-   * constructor the reason is an instance of, a regular expression that matches it, or an error or
-   * object whose own enumerable properties it recursively matches.
+   * @param error - What the rejection reason is checked against: a predicate that returns `true`; a
+   * constructor it is an instance of, which must be callable without `new`, so not an ES6 class; a
+   * regular expression that matches it; an `Error`, which it must deeply equal, down to having no
+   * own enumerable properties the `Error` does not; or a plain object, of which it need only match
+   * the properties named, deeply, or by regular expression against a string property.
    * @param message - Custom message for the error; if an `Error` instance, it is used directly
    * instead of an `AssertionError`.
    * @returns A promise that resolves once the assertion has passed, and rejects with an

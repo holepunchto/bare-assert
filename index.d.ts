@@ -210,72 +210,73 @@ declare namespace assert {
   ): void
 
   /**
-   * Throw an `AssertionError` unless `fn` rejects. The returned promise settles once the assertion
-   * has been made, so it must be awaited.
+   * Reject with an `AssertionError` unless `fn` rejects. The returned promise settles once the
+   * assertion has been made, so it must be awaited.
    * @param fn - The promise to await, or a function returning one; a function that throws
-   * synchronously throws through.
-   * @param message - Custom message for the thrown error; if an `Error` instance, it is thrown
-   * directly instead of an `AssertionError`. Defaults to `'Executed'` when nothing was rejected.
-   * @throws {AssertionError} thrown if `fn` does not reject (unless `message` is an `Error`
-   * instance, which is thrown instead).
+   * synchronously propagates rather than counting as a rejection.
+   * @param message - Custom message for the error; if an `Error` instance, it is used directly
+   * instead of an `AssertionError`. Defaults to `'Executed'` when nothing was rejected.
+   * @returns A promise that resolves once the assertion has passed, and rejects with an
+   * `AssertionError` if `fn` does not reject (or with `message` if it is an `Error` instance).
    */
   export function rejects(
     fn: (() => Promise<unknown>) | Promise<unknown>,
     message?: string | Error
-  ): void
+  ): Promise<void>
   /**
-   * Throw an `AssertionError` unless `fn` rejects with a reason matching `error`. The returned
-   * promise settles once the assertion has been made, so it must be awaited.
+   * Reject with an `AssertionError` unless `fn` rejects with a reason matching `error`. The
+   * returned promise settles once the assertion has been made, so it must be awaited.
    * @param fn - The promise to await, or a function returning one; a function that throws
-   * synchronously throws through.
+   * synchronously propagates rather than counting as a rejection.
    * @param error - What the rejection reason must match: a predicate that returns `true`, a
    * constructor the reason is an instance of, a regular expression that matches it, or an error or
    * object whose own enumerable properties it recursively matches.
-   * @param message - Custom message for the thrown error; if an `Error` instance, it is thrown
-   * directly instead of an `AssertionError`. Defaults to `'Executed'` when nothing was rejected.
-   * @throws {AssertionError} thrown if `fn` does not reject, or rejects with a reason that does not
-   * match `error` (unless `message` is an `Error` instance, which is thrown instead).
+   * @param message - Custom message for the error; if an `Error` instance, it is used directly
+   * instead of an `AssertionError`. Defaults to `'Executed'` when nothing was rejected.
+   * @returns A promise that resolves once the assertion has passed, and rejects with an
+   * `AssertionError` if `fn` does not reject, or rejects with a reason that does not match `error`
+   * (or with `message` if it is an `Error` instance).
    */
   export function rejects(
     fn: (() => Promise<unknown>) | Promise<unknown>,
     error: ((err: unknown) => boolean) | RegExp | Error | object,
     message?: string | Error
-  ): void
+  ): Promise<void>
 
   /**
-   * Throw an `AssertionError` if `fn` rejects. The returned promise settles once the assertion has
-   * been made, so it must be awaited.
+   * Reject with an `AssertionError` if `fn` rejects. The returned promise settles once the
+   * assertion has been made, so it must be awaited.
    * @param fn - The promise to await, or a function returning one; a function that throws
-   * synchronously throws through.
-   * @param message - Custom message for the thrown error; if an `Error` instance, it is thrown
-   * directly instead of an `AssertionError`.
-   * @throws {AssertionError} thrown if `fn` rejects (unless `message` is an `Error` instance, which
-   * is thrown instead).
+   * synchronously propagates rather than counting as a rejection.
+   * @param message - Custom message for the error; if an `Error` instance, it is used directly
+   * instead of an `AssertionError`.
+   * @returns A promise that resolves once the assertion has passed, and rejects with an
+   * `AssertionError` if `fn` rejects (or with `message` if it is an `Error` instance).
    */
   export function doesNotReject(
     fn: (() => Promise<unknown>) | Promise<unknown>,
     message?: string | Error
-  ): void
+  ): Promise<void>
   /**
-   * Throw an `AssertionError` if `fn` rejects with a reason matching `error`. A rejection reason
-   * that does not match `error` is re-thrown as it is. The returned promise settles once the
-   * assertion has been made, so it must be awaited.
+   * Reject with an `AssertionError` if `fn` rejects with a reason matching `error`. A reason that
+   * does not match `error` is passed on as it is. The returned promise settles once the assertion
+   * has been made, so it must be awaited.
    * @param fn - The promise to await, or a function returning one; a function that throws
-   * synchronously throws through.
+   * synchronously propagates rather than counting as a rejection.
    * @param error - What the rejection reason is checked against: a predicate that returns `true`, a
    * constructor the reason is an instance of, a regular expression that matches it, or an error or
    * object whose own enumerable properties it recursively matches.
-   * @param message - Custom message for the thrown error; if an `Error` instance, it is thrown
-   * directly instead of an `AssertionError`.
-   * @throws {AssertionError} thrown if `fn` rejects with a reason matching `error` (unless
-   * `message` is an `Error` instance, which is thrown instead). A reason that does not match
-   * `error` is re-thrown unchanged.
+   * @param message - Custom message for the error; if an `Error` instance, it is used directly
+   * instead of an `AssertionError`.
+   * @returns A promise that resolves once the assertion has passed, and rejects with an
+   * `AssertionError` if `fn` rejects with a reason matching `error` (or with `message` if it is an
+   * `Error` instance). A reason that does not match `error` is passed on unchanged.
    */
   export function doesNotReject(
     fn: (() => Promise<unknown>) | Promise<unknown>,
     error: ((err: unknown) => boolean) | RegExp | Error | object,
     message?: string | Error
-  ): void
+  ): Promise<void>
 
   /**
    * Throw an `AssertionError` unless `actual` is `null` or `undefined`.

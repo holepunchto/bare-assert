@@ -28,6 +28,15 @@ declare namespace assert {
   }
 
   /**
+   * Throw an `AssertionError` unconditionally.
+   * @param message - Custom message for the thrown error, defaulting to `'Failed'`; if an `Error`
+   * instance, it is thrown directly instead of an `AssertionError`.
+   * @throws {AssertionError} always thrown (unless `message` is an `Error` instance, which is
+   * thrown instead).
+   */
+  export function fail(message?: string | Error): never
+
+  /**
    * Throw an `AssertionError` if `value` is falsy.
    * @param value - The value to assert is truthy.
    * @param message - Custom message for the thrown error; if an `Error` instance, it is thrown
@@ -36,6 +45,16 @@ declare namespace assert {
    * which is thrown instead).
    */
   export function ok(value: any, message?: string | Error): void
+
+  /**
+   * Throw an `AssertionError` if `value` is truthy.
+   * @param value - The value to assert is falsy.
+   * @param message - Custom message for the thrown error; if an `Error` instance, it is thrown
+   * directly instead of an `AssertionError`.
+   * @throws {AssertionError} thrown if `value` is truthy (unless `message` is an `Error` instance,
+   * which is thrown instead).
+   */
+  export function notOk(value: any, message?: string | Error): void
 
   /**
    * Throw an `AssertionError` unless `actual` and `expected` are loosely equal (`==`), with `NaN`

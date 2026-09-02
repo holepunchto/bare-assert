@@ -2,7 +2,9 @@ const inspect = require('bare-inspect')
 const getType = require('bare-type')
 const Memoization = require('./lib/memoization')
 
-const defaultDeepStrictOptions = { partial: false, memo: new Memoization() }
+function defaultDeepStrictOptions() {
+  return { partial: false, memo: new Memoization(), ignoreList: [] }
+}
 
 class AssertionError extends Error {
   constructor(opts = {}) {
@@ -104,7 +106,7 @@ exports.doesNotMatch = function doesNotMatch(actual, regexp, message) {
   assertFail({ message, actual, expected: regexp, operator: 'doesNotMatch' }, doesNotMatch)
 }
 
-function assertError(actual, expected, opts = defaultDeepStrictOptions) {
+function assertError(actual, expected, opts = defaultDeepStrictOptions()) {
   if (expected === undefined) return true
 
   const type = getType(expected)
@@ -115,7 +117,7 @@ function assertError(actual, expected, opts = defaultDeepStrictOptions) {
     if (expected(actual) === true) return true
     if (expected.prototype !== undefined && actual instanceof expected) return true
   } else if (type.isError()) {
-    if (deepStrictEqualError(actual, expected, type, opts)) return true
+    if (deepStrictEqualError(actual, expected, opts)) return true
   } else if (type.isObject()) {
     if (assertErrorObject(actual, expected, opts)) return true
   }
@@ -266,7 +268,9 @@ exports.notDeepStrictEqual = function notDeepStrictEqual(actual, expected, messa
 }
 
 exports.partialDeepStrictEqual = function partialDeepStrictEqual(actual, expected, message) {
-  if (deepStrictEqualValue(actual, expected, { ...defaultDeepStrictOptions, partial: true })) return
+  if (deepStrictEqualValue(actual, expected, { ...defaultDeepStrictOptions(), partial: true })) {
+    return
+  }
 
   assertFail(
     { message, actual, expected, operator: 'partialDeepStrictEqual' },
@@ -274,36 +278,48 @@ exports.partialDeepStrictEqual = function partialDeepStrictEqual(actual, expecte
   )
 }
 
-function deepStrictEqualValue(actual, expected, opts = defaultDeepStrictOptions) {
+function deepStrictEqualValue(actual, expected, opts = defaultDeepStrictOptions()) {
   const { partial, memo } = opts
 
-  const type = getType(actual)
+  const actualType = getType(actual)
+  const expectedType = getType(expected)
 
-  if (!type.isObject() || !getType(expected).isObject()) return Object.is(actual, expected)
+  if (!actualType.isObject() || !expectedType.isObject()) return Object.is(actual, expected)
 
-  const prototype = Object.getPrototypeOf(actual)
-
-  if (prototype !== Object.getPrototypeOf(expected)) return false
-
-  if (type.isWeakMap() || type.isWeakSet() || type.isPromise()) return actual === expected
+  if (actual === expected) return true
 
   // Anything that can be settled without descending into the values is settled
   // first. A pair that already differs in its own right is unequal whatever the
   // surrounding structures do.
-  if (!deepStrictEqualShallow(actual, expected, type, prototype, opts)) return false
+  if (!deepStrictEqualShallow(actual, expected, actualType, expectedType, opts)) return false
+
+  if (actualType.isWeakMap() || actualType.isWeakSet() || actualType.isPromise()) {
+    return actual === expected
+  }
 
   if (Buffer.isBuffer(actual)) return deepStrictEqualBuffer(actual, expected, opts)
 
-  if (type.isArrayBuffer() || type.isSharedArrayBuffer()) {
+  if (actualType.isArrayBuffer() || actualType.isSharedArrayBuffer()) {
     return deepStrictEqualBuffer(new Uint8Array(actual), new Uint8Array(expected), opts)
   }
 
-  if (type.isDataView()) {
+  if (actualType.isDataView()) {
     return deepStrictEqualBuffer(
       new Uint8Array(actual.buffer, actual.byteOffset, actual.byteLength),
       new Uint8Array(expected.buffer, expected.byteOffset, expected.byteLength),
-      partial
+      opts
     )
+  }
+
+  if (
+    actualType.isTypedArray() &&
+    !deepStrictEqualBuffer(
+      new Uint8Array(actual.buffer, actual.byteOffset, actual.byteLength),
+      new Uint8Array(expected.buffer, expected.byteOffset, expected.byteLength),
+      opts
+    )
+  ) {
+    return false
   }
 
   if (memo.has(actual, expected)) {
@@ -312,7 +328,7 @@ function deepStrictEqualValue(actual, expected, opts = defaultDeepStrictOptions)
     memo.add(actual, expected)
   }
 
-  if (partial === true && type.isArray()) {
+  if (partial === true && actualType.isArray()) {
     if (!partialDeepStrictEqualArray(actual, expected, opts)) {
       memo.remove(actual, expected)
       return false
@@ -321,10 +337,10 @@ function deepStrictEqualValue(actual, expected, opts = defaultDeepStrictOptions)
 
   let result
 
-  if (type.isError()) result = deepStrictEqualError(actual, expected, type, opts)
-  else if (type.isMap()) result = deepStrictEqualMap(actual, expected, type, opts)
-  else if (type.isSet()) result = deepStrictEqualSet(actual, expected, type, opts)
-  else result = deepStrictEqualObject(actual, expected, type, opts)
+  if (actualType.isError()) result = deepStrictEqualError(actual, expected, opts)
+  else if (actualType.isMap()) result = deepStrictEqualMap(actual, expected, opts)
+  else if (actualType.isSet()) result = deepStrictEqualSet(actual, expected, opts)
+  else result = deepStrictEqualObject(actual, expected, opts)
 
   memo.remove(actual, expected)
 
@@ -333,8 +349,25 @@ function deepStrictEqualValue(actual, expected, opts = defaultDeepStrictOptions)
 
 // Compares everything about a pair that can be decided on the spot, leaving
 // only the values reachable from it for the caller to walk.
-function deepStrictEqualShallow(actual, expected, type, prototype, opts) {
+function deepStrictEqualShallow(actual, expected, actualType, expectedType, opts) {
   const { partial } = opts
+
+  const prototype = Object.getPrototypeOf(actual)
+
+  if (partial === true) {
+    if (Array.isArray(actual) !== Array.isArray(expected)) return false
+
+    if (
+      (actual[Symbol.toStringTag] || expected[Symbol.toStringTag]) &&
+      actual[Symbol.toStringTag] !== expected[Symbol.toStringTag]
+    ) {
+      return false
+    }
+
+    if (actualType.isDate() !== expectedType.isDate()) return false
+  } else {
+    if (prototype !== Object.getPrototypeOf(expected)) return false
+  }
 
   if (
     prototype === BigInt.prototype ||
@@ -344,7 +377,7 @@ function deepStrictEqualShallow(actual, expected, type, prototype, opts) {
     prototype === Symbol.prototype
   ) {
     if (!Object.is(actual.valueOf(), expected.valueOf())) return false
-  } else if (type.isRegExp()) {
+  } else if (actualType.isRegExp()) {
     if (
       actual.lastIndex !== expected.lastIndex ||
       actual.flags !== expected.flags ||
@@ -352,85 +385,68 @@ function deepStrictEqualShallow(actual, expected, type, prototype, opts) {
     ) {
       return false
     }
-  } else if (type.isTypedArray()) {
-    if (!deepStrictEqualBuffer(actual, expected, opts)) return false
-  } else if (type.isDate()) {
+  } else if (actualType.isDate()) {
     if (!Object.is(actual.getTime(), expected.getTime())) return false
   }
 
+  if (partial === true) return partialDeepStrictEqualLength(actual, expected, actualType)
+  else return deepStrictEqualLength(actual, expected, actualType)
+}
+
+function deepStrictEqualLength(actual, expected, type) {
   if (type.isArguments() || type.isArray()) {
-    if (partial === true) {
-      if (expected.length > actual.length) return false
-    } else {
-      if (actual.length !== expected.length) return false
-    }
+    if (actual.length !== expected.length) return false
   } else if (type.isMap() || type.isSet()) {
-    if (partial === true) {
-      if (expected.size > actual.size) return false
-    } else {
-      if (actual.size !== expected.size) return false
-    }
+    if (actual.size !== expected.size) return false
   } else if (type.isSharedArrayBuffer()) {
-    if (partial === true) {
-      if (expected.byteLength > actual.byteLength) return false
-    } else {
-      if (actual.byteLength !== expected.byteLength) return false
-    }
+    if (actual.byteLength !== expected.byteLength) return false
   }
 
-  if (partial === true) {
-    return getEnumerableKeys(actual).length >= getEnumerableKeys(expected).length
-  } else {
-    return getEnumerableKeys(actual).length === getEnumerableKeys(expected).length
+  return getEnumerableKeys(actual).length === getEnumerableKeys(expected).length
+}
+
+function partialDeepStrictEqualLength(actual, expected, type) {
+  if (type.isArguments() || type.isArray()) {
+    if (expected.length > actual.length) return false
+  } else if (type.isMap() || type.isSet()) {
+    if (expected.size > actual.size) return false
+  } else if (type.isSharedArrayBuffer()) {
+    if (expected.byteLength > actual.byteLength) return false
   }
+
+  return getEnumerableKeys(actual).length >= getEnumerableKeys(expected).length
 }
 
 function deepStrictEqualBuffer(actual, expected, opts) {
-  if (opts.partial === true) return partialDeepStrictEqualBuffer(actual, expected)
+  if (opts.partial === true) return partialDeepStrictEqualBuffer(actual, expected, opts)
 
   return actual.byteLength === expected.byteLength && Buffer.compare(actual, expected) === 0
 }
 
-function deepStrictEqualError(actual, expected, type, opts) {
+function deepStrictEqualError(actual, expected, opts) {
   return (
     deepStrictEqualValue(actual.name, expected.name, opts) &&
-    ((opts.partial === true && expected.message === '') ||
+    ((opts.partial === true && !expected.message) ||
       deepStrictEqualValue(actual.message, expected.message, opts)) &&
     deepStrictEqualObjectKeys(actual, expected, ['cause', 'errors'], opts) &&
-    deepStrictEqualObject(actual, expected, type, opts)
+    deepStrictEqualObject(actual, expected, opts)
   )
 }
 
 function deepStrictEqualArrayUnordered(actual, expected, opts) {
-  const { partial } = opts
-
   for (let i = 0; i < expected.length; i++) {
     let found = false
-    const itemB = expected[i]
+    const itemExpected = expected[i]
 
     for (let j = 0; j < actual.length; j++) {
-      const itemA = actual[j]
+      const itemActual = actual[j]
 
-      if (deepStrictEqualValue(itemA, itemB, { ...opts, partial: false })) {
+      if (deepStrictEqualValue(itemActual, itemExpected, opts)) {
         found = true
 
         actual.splice(j, 1)
 
         break
-      }
-    }
-
-    if (partial === true && found === false) {
-      for (let j = 0; j < actual.length; j++) {
-        const itemA = actual[j]
-
-        if (deepStrictEqualValue(itemA, itemB, opts)) {
-          found = true
-
-          actual.splice(j, 1)
-
-          break
-        }
       }
     }
 
@@ -453,80 +469,100 @@ function requiresDeepKeyMatch(key) {
   return (type === 'object' && key !== null) || type === 'function'
 }
 
-function deepStrictEqualMap(actual, expected, type, opts) {
-  if (!deepStrictEqualObject(actual, expected, type, opts)) return false
+function deepStrictEqualMap(actual, expected, opts) {
+  if (!deepStrictEqualObject(actual, expected, opts)) return false
 
   // Match entries with primitive keys directly through `b` in linear time and
   // leave only the object-keyed entries for the quadratic fallback.
-  const restB = []
-  const restA = []
+  const restActual = []
+  const restExpected = []
 
   for (const [key, value] of expected) {
     if (requiresDeepKeyMatch(key)) {
-      restB.push({ key, value })
+      restExpected.push({ key, value })
     } else if (!actual.has(key) || !deepStrictEqualValue(actual.get(key), value, opts)) {
       return false
     }
   }
 
   for (const [key, value] of actual) {
-    if (requiresDeepKeyMatch(key)) restA.push({ key, value })
+    if (requiresDeepKeyMatch(key)) restActual.push({ key, value })
   }
 
-  return deepStrictEqualArrayUnordered(restA, restB, opts)
+  if (opts.partial === true) {
+    function sortByKeysLength(a, b) {
+      return getEnumerableKeys(b.key).length - getEnumerableKeys(a.key).length
+    }
+
+    restActual.sort(sortByKeysLength)
+    restExpected.sort(sortByKeysLength)
+  }
+
+  return deepStrictEqualArrayUnordered(restActual, restExpected, opts)
 }
 
-function deepStrictEqualSet(actual, expected, type, opts) {
-  if (!deepStrictEqualObject(actual, expected, type, opts)) return false
+function deepStrictEqualSet(actual, expected, opts) {
+  if (!deepStrictEqualObject(actual, expected, opts)) return false
 
   // Match primitive members directly through `b` in linear time and leave only
   // the object members for the quadratic fallback.
-  const restB = []
-  const restA = []
+  const restActual = []
+  const restExpected = []
 
   for (const value of expected) {
-    if (requiresDeepKeyMatch(value)) restB.push(value)
+    if (requiresDeepKeyMatch(value)) restExpected.push(value)
     else if (!actual.has(value)) return false
   }
 
   for (const value of actual) {
-    if (requiresDeepKeyMatch(value)) restA.push(value)
+    if (requiresDeepKeyMatch(value)) restActual.push(value)
   }
 
-  return deepStrictEqualArrayUnordered(restA, restB, opts)
+  if (opts.partial === true) {
+    function sortByKeysLength(a, b) {
+      return getEnumerableKeys(b).length - getEnumerableKeys(a).length
+    }
+
+    restActual.sort(sortByKeysLength)
+    restExpected.sort(sortByKeysLength)
+  }
+
+  return deepStrictEqualArrayUnordered(restActual, restExpected, opts)
 }
 
 function deepStrictEqualObjectKeys(actual, expected, keys, opts) {
   const { partial } = opts
 
   for (const key of keys) {
-    const hasA = key in actual
-    const hasB = key in expected
+    const hasActual = key in actual
+    const hasExpected = key in expected
 
-    if (partial === true && !hasB) continue
-    if ((hasA ^ hasB) === 1) return false
-    if (hasA && !deepStrictEqualValue(actual[key], expected[key], opts)) return false
+    // TODO: Double-check the constraint '(hasActual && expected[key] === undefined)'
+    if (partial === true && (!hasExpected || (hasActual && expected[key] === undefined))) continue
+    if (hasActual !== hasExpected) return false
+    if (hasActual && !deepStrictEqualValue(actual[key], expected[key], opts)) return false
   }
 
   return true
 }
 
 // The key counts have already been compared, so only the values are left.
-function deepStrictEqualObject(actual, expected, type, opts) {
-  const aKeys = getEnumerableKeys(actual)
-  const bKeys = getEnumerableKeys(expected)
+function deepStrictEqualObject(actual, expected, opts) {
+  const actualKeys = getEnumerableKeys(actual)
+  const expectedKeys = getEnumerableKeys(expected)
 
-  const indexedPartial = opts.partial === true && (type.isArray() || type.isTypedArray())
+  for (const key of expectedKeys) {
+    // Skip already compared keys
+    if (opts.ignoreList.includes(key)) continue
 
-  for (const key of bKeys) {
-    // the number indexes of partial objects are tested at
-    // partialDeepStrictEqualArray and partialDeepStrictEqualBuffer
-    if (indexedPartial && typeof key === 'string' && /^\d+$/.test(key)) continue
+    if (!actualKeys.includes(key) || !deepStrictEqualValue(actual[key], expected[key], opts)) {
+      opts.ignoreList = []
 
-    if (!aKeys.includes(key) || !deepStrictEqualValue(actual[key], expected[key], opts)) {
       return false
     }
   }
+
+  opts.ignoreList = []
 
   return true
 }
@@ -535,6 +571,8 @@ function partialDeepStrictEqualArray(actual, expected, opts) {
   let j = -1
 
   for (let i = 0; i < expected.length; i++) {
+    opts.ignoreList.push(i.toString())
+
     let found = false
 
     if (!(i in expected)) continue // Ignore hole in array
@@ -555,10 +593,12 @@ function partialDeepStrictEqualArray(actual, expected, opts) {
   return true
 }
 
-function partialDeepStrictEqualBuffer(actual, expected) {
+function partialDeepStrictEqualBuffer(actual, expected, opts) {
   let j = -1
 
   for (let i = 0; i < expected.length; i++) {
+    opts.ignoreList.push(i.toString())
+
     let found = false
 
     while (++j < actual.length) {

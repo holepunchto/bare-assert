@@ -1813,6 +1813,12 @@ test('partialDeepStrictEqual, error', (t) => {
     assert.partialDeepStrictEqual(new Error('message', { cause: undefined }), new Error('message'))
   )
 
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Error('message', { cause: 'boom' }),
+      new Error('message', { cause: undefined })
+    )
+  )
   t.exception(
     () =>
       assert.partialDeepStrictEqual(
@@ -1834,13 +1840,6 @@ test('partialDeepStrictEqual, error, undefined property', (t) => {
   name.name = undefined
 
   t.execution(() => assert.partialDeepStrictEqual(new Error('message'), message))
-  t.execution(() =>
-    assert.partialDeepStrictEqual(
-      new Error('message', { cause: 'boom' }),
-      new Error('message', { cause: undefined })
-    )
-  )
-
   t.exception(
     () => assert.partialDeepStrictEqual(new Error('message'), name, 'should fail'),
     /should fail/

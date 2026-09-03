@@ -535,7 +535,6 @@ function deepStrictEqualObjectKeys(actual, expected, keys, opts) {
     const hasActual = key in actual
     const hasExpected = key in expected
 
-    // TODO: Double-check the constraint '(hasActual && expected[key] === undefined)'
     if (partial === true && (!hasExpected || (hasActual && expected[key] === undefined))) continue
     if (hasActual !== hasExpected) return false
     if (hasActual && !deepStrictEqualValue(actual[key], expected[key], opts)) return false

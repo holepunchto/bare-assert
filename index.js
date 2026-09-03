@@ -279,7 +279,7 @@ exports.partialDeepStrictEqual = function partialDeepStrictEqual(actual, expecte
 }
 
 function deepStrictEqualValue(actual, expected, opts = defaultDeepStrictOptions()) {
-  const { partial, memo } = opts
+  const { partial, memo, ignoreList } = opts
 
   const actualType = getType(actual)
   const expectedType = getType(expected)
@@ -340,7 +340,7 @@ function deepStrictEqualValue(actual, expected, opts = defaultDeepStrictOptions(
 
   memo.remove(actual, expected)
 
-  opts.ignoreList = []
+  ignoreList.length = 0
 
   return result
 }
@@ -416,7 +416,7 @@ function partialDeepStrictEqualLength(actual, expected, type) {
 }
 
 function deepStrictEqualBuffer(actual, expected, opts) {
-  if (opts.partial === true) return partialDeepStrictEqualBuffer(actual, expected, opts)
+  if (opts.partial === true) return partialDeepStrictEqualBuffer(actual, expected)
 
   return actual.byteLength === expected.byteLength && Buffer.compare(actual, expected) === 0
 }
@@ -545,14 +545,16 @@ function deepStrictEqualObjectKeys(actual, expected, keys, opts) {
 
 // The key counts have already been compared, so only the values are left.
 function deepStrictEqualObject(actual, expected, opts) {
+  const { ignoreList } = opts
+
   const actualKeys = getEnumerableKeys(actual)
   const expectedKeys = getEnumerableKeys(expected)
 
-  const hasIgnoreList = opts.ignoreList.length > 0
+  const hasIgnoreList = ignoreList.length > 0
 
   for (const key of expectedKeys) {
     // Skip already compared keys
-    if (hasIgnoreList && opts.ignoreList.includes(key)) continue
+    if (hasIgnoreList && ignoreList.includes(key)) continue
 
     if (!actualKeys.includes(key) || !deepStrictEqualValue(actual[key], expected[key], opts)) {
       return false
@@ -563,12 +565,14 @@ function deepStrictEqualObject(actual, expected, opts) {
 }
 
 function partialDeepStrictEqualArray(actual, expected, opts) {
+  const { ignoreList } = opts
+
   let j = -1
 
   for (let i = 0; i < expected.length; i++) {
     if (!(i in expected)) continue // Ignore hole in array
 
-    opts.ignoreList.push(i.toString())
+    ignoreList.push(i.toString())
 
     let found = false
 

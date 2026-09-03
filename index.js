@@ -571,11 +571,11 @@ function partialDeepStrictEqualArray(actual, expected, opts) {
   let j = -1
 
   for (let i = 0; i < expected.length; i++) {
+    if (!(i in expected)) continue // Ignore hole in array
+
     opts.ignoreList.push(i.toString())
 
     let found = false
-
-    if (!(i in expected)) continue // Ignore hole in array
 
     while (++j < actual.length) {
       if (!(j in actual)) continue // Ignore hole in array

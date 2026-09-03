@@ -311,15 +311,14 @@ function deepStrictEqualValue(actual, expected, opts = defaultDeepStrictOptions(
     )
   }
 
-  if (
-    actualType.isTypedArray() &&
-    !deepStrictEqualBuffer(
-      new Uint8Array(actual.buffer, actual.byteOffset, actual.byteLength),
-      new Uint8Array(expected.buffer, expected.byteOffset, expected.byteLength),
-      opts
+  if (actualType.isTypedArray()) {
+    return (
+      partialDeepStrictEqualArray(
+        new Uint8Array(actual.buffer, actual.byteOffset, actual.byteLength),
+        new Uint8Array(expected.buffer, expected.byteOffset, expected.byteLength),
+        opts
+      ) && deepStrictEqualObject(actual, expected, opts)
     )
-  ) {
-    return false
   }
 
   if (memo.has(actual, expected)) {
@@ -328,21 +327,20 @@ function deepStrictEqualValue(actual, expected, opts = defaultDeepStrictOptions(
     memo.add(actual, expected)
   }
 
-  if (partial === true && actualType.isArray()) {
-    if (!partialDeepStrictEqualArray(actual, expected, opts)) {
-      memo.remove(actual, expected)
-      return false
-    }
-  }
-
   let result
 
-  if (actualType.isError()) result = deepStrictEqualError(actual, expected, opts)
+  if (partial === true && actualType.isArray()) {
+    result =
+      partialDeepStrictEqualArray(actual, expected, opts) &&
+      deepStrictEqualObject(actual, expected, opts)
+  } else if (actualType.isError()) result = deepStrictEqualError(actual, expected, opts)
   else if (actualType.isMap()) result = deepStrictEqualMap(actual, expected, opts)
   else if (actualType.isSet()) result = deepStrictEqualSet(actual, expected, opts)
   else result = deepStrictEqualObject(actual, expected, opts)
 
   memo.remove(actual, expected)
+
+  opts.ignoreList = []
 
   return result
 }
@@ -551,18 +549,16 @@ function deepStrictEqualObject(actual, expected, opts) {
   const actualKeys = getEnumerableKeys(actual)
   const expectedKeys = getEnumerableKeys(expected)
 
+  const hasIgnoreList = opts.ignoreList.length > 0
+
   for (const key of expectedKeys) {
     // Skip already compared keys
-    if (opts.ignoreList.includes(key)) continue
+    if (hasIgnoreList && opts.ignoreList.includes(key)) continue
 
     if (!actualKeys.includes(key) || !deepStrictEqualValue(actual[key], expected[key], opts)) {
-      opts.ignoreList = []
-
       return false
     }
   }
-
-  opts.ignoreList = []
 
   return true
 }
@@ -593,12 +589,10 @@ function partialDeepStrictEqualArray(actual, expected, opts) {
   return true
 }
 
-function partialDeepStrictEqualBuffer(actual, expected, opts) {
+function partialDeepStrictEqualBuffer(actual, expected) {
   let j = -1
 
   for (let i = 0; i < expected.length; i++) {
-    opts.ignoreList.push(i.toString())
-
     let found = false
 
     while (++j < actual.length) {

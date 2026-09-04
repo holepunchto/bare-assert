@@ -1658,6 +1658,100 @@ test('partialDeepStrictEqual, prototype, differing kind', (t) => {
   )
 })
 
+// Values of different kinds stay unequal whichever side the special one is on.
+// `Object.prototype.toString` separates the kinds that carry no
+// `Symbol.toStringTag` of their own, such as errors, regular expressions,
+// boxed primitives and arguments objects.
+test.solo('partialDeepStrictEqual, prototype, object tag', (t) => {
+  const args = function () {
+    return arguments
+  }
+
+  t.exception(() => assert.partialDeepStrictEqual({}, /foo/, 'should fail'), /should fail/)
+  t.exception(
+    () => assert.partialDeepStrictEqual({}, new Error('message'), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        { lastIndex: 0, flags: '', source: 'foo' },
+        /foo/,
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        { message: 'message', name: 'Error' },
+        new Error('message'),
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception(() => assert.partialDeepStrictEqual({}, new Number(1), 'should fail'), /should fail/)
+  t.exception(() => assert.partialDeepStrictEqual({}, new String(''), 'should fail'), /should fail/)
+  t.exception(() => assert.partialDeepStrictEqual({}, args(), 'should fail'), /should fail/)
+  t.exception(() => assert.partialDeepStrictEqual(args(1), {}, 'should fail'), /should fail/)
+  t.exception(
+    () => assert.partialDeepStrictEqual(Object.create(null), /foo/, 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(Object.create(null), new Error('message'), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual({ foo: {} }, { foo: /bar/ }, 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual({ foo: {} }, { foo: new Error('bar') }, 'should fail'),
+    /should fail/
+  )
+
+  // An empty tag is still a tag the other side does not have.
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        { [Symbol.toStringTag]: '', foo: 1 },
+        { foo: 1 },
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        { foo: 1 },
+        { [Symbol.toStringTag]: '', foo: 1 },
+        'should fail'
+      ),
+    /should fail/
+  )
+})
+
+// The tag is what has to agree, so the same kind with a replaced prototype is
+// still equal.
+test('partialDeepStrictEqual, prototype, replaced prototype', (t) => {
+  const withParent = (value, prototype) => Object.setPrototypeOf(value, { __proto__: prototype })
+
+  t.execution(() => assert.partialDeepStrictEqual(/foo/, withParent(/foo/, RegExp.prototype)))
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Error('message'),
+      withParent(new Error('message'), Error.prototype)
+    )
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Date(0), withParent(new Date(0), Date.prototype))
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Number(1), withParent(new Number(1), Number.prototype))
+  )
+})
+
 test('partialDeepStrictEqual, map', (t) => {
   const foo = new Map([
     [{ a: 1 }, 'value1'],
@@ -1724,6 +1818,21 @@ test('partialDeepStrictEqual, map, ambiguous object keys', (t) => {
   )
 })
 
+test('partialDeepStrictEqual, map, ambiguous object keys, minimal', (t) => {
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Map([
+        [{ a: 1 }, 1],
+        [{ a: 1, b: 1 }, 1]
+      ]),
+      new Map([
+        [{ a: 1 }, 1],
+        [{ b: 1 }, 1]
+      ])
+    )
+  )
+})
+
 test('partialDeepStrictEqual, set', (t) => {
   t.execution(() =>
     assert.partialDeepStrictEqual(new Set([{ foo: 1, bar: 2 }]), new Set([{ foo: 1 }]))
@@ -1780,6 +1889,21 @@ test('partialDeepStrictEqual, set, ambiguous members', (t) => {
   )
 })
 
+test('partialDeepStrictEqual, set, ambiguous members, minimal', (t) => {
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Set([{ a: 1 }, { a: 1, b: 1 }]),
+      new Set([{ a: 1 }, { b: 1 }])
+    )
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Set([{ b: 1 }, { a: 1, b: 1 }, { b: 1 }]),
+      new Set([{ b: 1 }, { a: 1 }])
+    )
+  )
+})
+
 test('partialDeepStrictEqual, sparse array', (t) => {
   t.execution(() => assert.partialDeepStrictEqual([1, , , undefined, , 3], [1, , undefined, 3]))
 
@@ -1800,6 +1924,35 @@ test('partialDeepStrictEqual, sparse array', (t) => {
 
   t.exception(
     () => assert.partialDeepStrictEqual([1, , , , 3], [1, , undefined, 3], 'should fail'),
+    /should fail/
+  )
+})
+
+// Which indexes the element match consumed has to survive descending into an
+// element, or the indexes get compared a second time by position.
+test('partialDeepStrictEqual, array, object elements', (t) => {
+  t.execution(() => assert.partialDeepStrictEqual([{ foo: 1 }, { bar: 2 }], [{ bar: 2 }]))
+  t.execution(() => assert.partialDeepStrictEqual([{ bar: 2 }, { foo: 1 }], [{ bar: 2 }]))
+  t.execution(() => assert.partialDeepStrictEqual([{ foo: 1 }, { bar: 2, baz: 3 }], [{ bar: 2 }]))
+  t.execution(() => assert.partialDeepStrictEqual([[9], [1, 2]], [[1]]))
+  t.execution(() =>
+    assert.partialDeepStrictEqual([{ foo: 1 }, { bar: 2 }], [{ foo: 1 }, { bar: 2 }])
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual([{ foo: 1 }, { bar: 2 }, { baz: 3 }], [{ foo: 1 }, { baz: 3 }])
+  )
+
+  t.exception(
+    () => assert.partialDeepStrictEqual([{ foo: 1 }, { bar: 2 }], [{ baz: 3 }], 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        [{ bar: 2 }, { foo: 1 }],
+        [{ foo: 1 }, { bar: 2 }],
+        'should fail'
+      ),
     /should fail/
   )
 })
@@ -1850,9 +2003,58 @@ test('partialDeepStrictEqual, error, undefined property', (t) => {
   )
 })
 
+// Only `undefined` means the property is not compared. Every other falsy
+// message is a message.
+test('partialDeepStrictEqual, error, falsy message', (t) => {
+  const withMessage = (value) => {
+    const err = new Error('message')
+
+    err.message = value
+
+    return err
+  }
+
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Error('message'), withMessage(0), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Error('message'), withMessage(false), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Error('message'), withMessage(null), 'should fail'),
+    /should fail/
+  )
+
+  t.execution(() => assert.partialDeepStrictEqual(new Error('message'), withMessage('')))
+  t.execution(() => assert.partialDeepStrictEqual(new Error('message'), withMessage(undefined)))
+})
+
+test('partialDeepStrictEqual, error, undefined property, non-enumerable', (t) => {
+  const hidden = (value, key) => {
+    Object.defineProperty(value, key, { value: undefined, enumerable: false, configurable: true })
+
+    return value
+  }
+
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Error('message'), hidden(new Error('message'), 'name'))
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Error('message'), hidden(new Error('message'), 'errors'))
+  )
+})
+
 test('partialDeepStrictEqual, error, aggregate error', (t) => {
   t.execution(() =>
     assert.partialDeepStrictEqual(new AggregateError([new Error()]), new AggregateError([]))
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new AggregateError([new Error('a'), new Error('b')], 'message'),
+      new AggregateError([new Error('b')], 'message')
+    )
   )
 
   t.exception(
@@ -1913,6 +2115,40 @@ test('partialDeepStrictEqual, typed array, differing type', (t) => {
     () =>
       assert.partialDeepStrictEqual(new Uint8Array([1, 2]), new Uint16Array([1]), 'should fail'),
     /should fail/
+  )
+})
+
+// The byte indexes a typed array matched are its own, and must not go on to
+// excuse a mismatch in whatever is compared next.
+test('partialDeepStrictEqual, typed array, sibling values', (t) => {
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        { foo: new Uint8Array([1]), bar: { 0: 'a' } },
+        { foo: new Uint8Array([1]), bar: { 0: 'b' } },
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual({ bar: { 0: 'a' } }, { bar: { 0: 'b' } }, 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        { foo: Buffer.from([1]), bar: { 0: 'a' } },
+        { foo: Buffer.from([1]), bar: { 0: 'b' } },
+        'should fail'
+      ),
+    /should fail/
+  )
+
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      { foo: new Uint8Array([1, 2]), bar: [{ baz: 1 }, { qux: 2 }] },
+      { foo: new Uint8Array([1, 2]), bar: [{ qux: 2 }] }
+    )
   )
 })
 

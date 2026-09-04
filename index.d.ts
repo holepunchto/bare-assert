@@ -134,6 +134,17 @@ declare namespace assert {
   export function notDeepStrictEqual(actual: any, expected: any, message?: string | Error): void
 
   /**
+   * Throw an `AssertionError` unless `actual` and `expected` are partially the same value.
+   * @param actual - The value produced.
+   * @param expected - The value to compare `actual` against.
+   * @param message - Custom message for the thrown error; if an `Error` instance, it is thrown
+   * directly instead of an `AssertionError`.
+   * @throws {AssertionError} thrown if the values are not partially equal (unless `message`
+   *  is an `Error` instance, which is thrown instead).
+   */
+  export function partialDeepStrictEqual(actual: any, expected: any, message?: string | Error): void
+
+  /**
    * Throw an `AssertionError` unless `actual` is a string that matches the `expected` regular
    * expression.
    * @param actual - The string to test.

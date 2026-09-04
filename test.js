@@ -438,6 +438,26 @@ test('deepStrictEqual, object, getter', (t) => {
   t.exception(() => assert.deepStrictEqual(obj, { foo: 'baz' }, 'should fail'), /should fail/)
 })
 
+// A pair that is the same reference is equal without being walked, so a getter
+// reachable only through it is never invoked. Each case needs its own object,
+// or a failure in one leaves state behind that decides the next.
+test('deepStrictEqual, object, getter, identical reference', (t) => {
+  const foo = {
+    get bar() {
+      throw new Error('should not be read')
+    }
+  }
+
+  const baz = {
+    get bar() {
+      throw new Error('should not be read')
+    }
+  }
+
+  t.execution(() => assert.deepStrictEqual(foo, foo))
+  t.execution(() => assert.deepStrictEqual({ bar: baz }, { bar: baz }))
+})
+
 test('deepStrictEqual, object, prototype', (t) => {
   const prototype = { __proto__: null }
   const a = { constructor: 42, foo: 'bar' }
@@ -1400,6 +1420,31 @@ test('deepStrictEqual, recursive set', (t) => {
   t.execution(() => assert.deepStrictEqual(a, b))
 })
 
+// A comparison that throws part way through must not leave the pairs it was
+// walking behind, where a later comparison would mistake them for a cycle.
+test('deepStrictEqual, comparison state', (t) => {
+  const a = {
+    foo: {
+      get bar() {
+        throw new Error('boom')
+      }
+    }
+  }
+
+  const b = {
+    foo: {
+      get bar() {
+        throw new Error('boom')
+      }
+    }
+  }
+
+  t.exception(() => assert.deepStrictEqual(a, b), /boom/)
+  t.exception(() => assert.deepStrictEqual(a, b), /boom/)
+  t.exception(() => assert.partialDeepStrictEqual(a, b), /boom/)
+  t.exception(() => assert.notDeepStrictEqual(a, b, 'should not be equal'), /boom/)
+})
+
 test('notDeepStrictEqual', (t) => {
   t.execution(() => assert.notDeepStrictEqual({ foo: 1 }, { foo: 2 }))
   t.execution(() => assert.notDeepStrictEqual([1, 2], [1, 2, 3]))
@@ -1441,4 +1486,1945 @@ test('notDeepStrictEqual, shared reference', (t) => {
       ),
     /should fail/
   )
+})
+
+test('partialDeepStrictEqual, basic', (t) => {
+  t.execution(() => assert.partialDeepStrictEqual({ a: { b: { c: 1 } } }, { a: { b: { c: 1 } } }))
+  t.execution(() => assert.partialDeepStrictEqual({ a: 1, b: 2, c: 3 }, { b: 2 }))
+  t.execution(() => assert.partialDeepStrictEqual([1, 2, 3, 4, 5, 6, 7, 8, 9], [4, 5, 9]))
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Set([{ a: 1 }, { b: 1 }]), new Set([{ a: 1 }]))
+  )
+  assert.partialDeepStrictEqual(
+    new Map([
+      ['foo', 'foo'],
+      ['bar', 'bar']
+    ]),
+    new Map([['bar', 'bar']])
+  )
+
+  t.exception(
+    () => assert.partialDeepStrictEqual({ a: 1 }, { a: 1, b: 2 }, 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual({ a: { b: 2 } }, { a: { b: '2' } }, 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual([1, 2, 3, 4, 5, 6, 7, 8, 9], [5, 4, 8], 'should fail'),
+    /should fail/
+  )
+})
+
+// Partial equality compares the kind of a value, not its prototype, so a class
+// instance and a plain object with the same properties are equal.
+test('partialDeepStrictEqual, prototype', (t) => {
+  class MyClass {
+    constructor(value) {
+      this.value = value
+    }
+  }
+
+  class Base {
+    constructor() {
+      this.foo = 1
+    }
+  }
+
+  class Derived extends Base {
+    constructor() {
+      super()
+      this.bar = 2
+    }
+  }
+
+  class MyMap extends Map {}
+
+  class MyArray extends Array {}
+
+  t.execution(() => assert.partialDeepStrictEqual(new MyClass('foo'), { value: 'foo' }))
+  t.execution(() => assert.partialDeepStrictEqual({ value: 'foo' }, new MyClass('foo')))
+  t.execution(() => assert.partialDeepStrictEqual(new MyClass('foo'), {}))
+  t.execution(() => assert.partialDeepStrictEqual(new Derived(), new Base()))
+  t.execution(() =>
+    assert.partialDeepStrictEqual(Object.assign(Object.create(null), { foo: 'bar' }), {
+      foo: 'bar'
+    })
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      { foo: 'bar' },
+      Object.assign(Object.create(null), { foo: 'bar' })
+    )
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new MyMap([
+        ['foo', 1],
+        ['bar', 2]
+      ]),
+      new Map([['foo', 1]])
+    )
+  )
+  t.execution(() => assert.partialDeepStrictEqual(MyArray.from([1, 2, 3]), [1, 3]))
+  t.execution(() => assert.partialDeepStrictEqual([1, 2, 3], MyArray.from([1, 3])))
+
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Base(), new Derived(), 'should fail'),
+    /should fail/
+  )
+})
+
+test('partialDeepStrictEqual, prototype, nested', (t) => {
+  class MyClass {
+    constructor(value) {
+      this.value = value
+    }
+  }
+
+  t.execution(() =>
+    assert.partialDeepStrictEqual({ foo: new MyClass('bar') }, { foo: { value: 'bar' } })
+  )
+  t.execution(() => assert.partialDeepStrictEqual([new MyClass('foo')], [{ value: 'foo' }]))
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Set([new MyClass('foo')]), new Set([{ value: 'foo' }]))
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Map([['foo', new MyClass('bar')]]),
+      new Map([['foo', { value: 'bar' }]])
+    )
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Map([[new MyClass('foo'), 1]]),
+      new Map([[{ value: 'foo' }, 1]])
+    )
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Error('message', { cause: new MyClass('foo') }),
+      new Error('message', { cause: { value: 'foo' } })
+    )
+  )
+})
+
+// Ignoring the prototype does not make values of different kinds comparable.
+test('partialDeepStrictEqual, prototype, differing kind', (t) => {
+  class Tagged {
+    constructor() {
+      this.value = 'foo'
+    }
+
+    get [Symbol.toStringTag]() {
+      return 'Tagged'
+    }
+  }
+
+  t.exception(() => assert.partialDeepStrictEqual({}, [], 'should fail'), /should fail/)
+  t.exception(() => assert.partialDeepStrictEqual([1], { 0: 1 }, 'should fail'), /should fail/)
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Map([['foo', 1]]), { foo: 1 }, 'should fail'),
+    /should fail/
+  )
+  t.exception(() => assert.partialDeepStrictEqual(new Set([1]), [1], 'should fail'), /should fail/)
+  t.exception(() => assert.partialDeepStrictEqual(new Date(0), {}, 'should fail'), /should fail/)
+  t.exception(() => assert.partialDeepStrictEqual(/foo/, {}, 'should fail'), /should fail/)
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Uint8Array([1]), [1], 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(new String('foo'), 'foo', 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Tagged(), { value: 'foo' }, 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual({ value: 'foo' }, new Tagged(), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(new TypeError('message'), new Error('message'), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(function foo() {}, {}, 'should fail'),
+    /should fail/
+  )
+})
+
+// Values of different kinds stay unequal whichever side the special one is on.
+// `Object.prototype.toString` separates the kinds that carry no
+// `Symbol.toStringTag` of their own, such as errors, regular expressions,
+// boxed primitives and arguments objects.
+test.solo('partialDeepStrictEqual, prototype, object tag', (t) => {
+  const args = function () {
+    return arguments
+  }
+
+  t.exception(() => assert.partialDeepStrictEqual({}, /foo/, 'should fail'), /should fail/)
+  t.exception(
+    () => assert.partialDeepStrictEqual({}, new Error('message'), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        { lastIndex: 0, flags: '', source: 'foo' },
+        /foo/,
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        { message: 'message', name: 'Error' },
+        new Error('message'),
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception(() => assert.partialDeepStrictEqual({}, new Number(1), 'should fail'), /should fail/)
+  t.exception(() => assert.partialDeepStrictEqual({}, new String(''), 'should fail'), /should fail/)
+  t.exception(() => assert.partialDeepStrictEqual({}, args(), 'should fail'), /should fail/)
+  t.exception(() => assert.partialDeepStrictEqual(args(1), {}, 'should fail'), /should fail/)
+  t.exception(
+    () => assert.partialDeepStrictEqual(Object.create(null), /foo/, 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(Object.create(null), new Error('message'), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual({ foo: {} }, { foo: /bar/ }, 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual({ foo: {} }, { foo: new Error('bar') }, 'should fail'),
+    /should fail/
+  )
+
+  // An empty tag is still a tag the other side does not have.
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        { [Symbol.toStringTag]: '', foo: 1 },
+        { foo: 1 },
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        { foo: 1 },
+        { [Symbol.toStringTag]: '', foo: 1 },
+        'should fail'
+      ),
+    /should fail/
+  )
+})
+
+// The tag is what has to agree, so the same kind with a replaced prototype is
+// still equal.
+test('partialDeepStrictEqual, prototype, replaced prototype', (t) => {
+  const withParent = (value, prototype) => Object.setPrototypeOf(value, { __proto__: prototype })
+
+  t.execution(() => assert.partialDeepStrictEqual(/foo/, withParent(/foo/, RegExp.prototype)))
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Error('message'),
+      withParent(new Error('message'), Error.prototype)
+    )
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Date(0), withParent(new Date(0), Date.prototype))
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Number(1), withParent(new Number(1), Number.prototype))
+  )
+})
+
+test('partialDeepStrictEqual, map', (t) => {
+  const foo = new Map([
+    [{ a: 1 }, 'value1'],
+    [{ a: 2 }, 'value2'],
+    [{ a: 2 }, 'value3'],
+    [{ a: 2 }, 'value3'],
+    [{ a: 2 }, 'value4'],
+    [{ a: 1 }, 'value2']
+  ])
+
+  const bar = new Map([
+    [{ a: 2 }, 'value3'],
+    [{ a: 1 }, 'value1'],
+    [{ a: 2 }, 'value3'],
+    [{ a: 1 }, 'value2']
+  ])
+
+  t.execution(() => assert.partialDeepStrictEqual(foo, bar))
+})
+
+// Partial equality is not transitive, so matching entries greedily can consume
+// the only entry a later expected entry could have matched.
+test('partialDeepStrictEqual, map, ambiguous object keys', (t) => {
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Map([
+        [{ a: 1 }, 0],
+        [{ a: 1, b: 1, c: 1 }, 1],
+        [{ a: 1, b: 1 }, 1],
+        [{ a: 1 }, 0]
+      ]),
+      new Map([
+        [{ b: 1 }, 1],
+        [{ a: 1, b: 1, c: 1 }, 1],
+        [{}, 0]
+      ])
+    )
+  )
+
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Map([
+        [{ a: 1, c: 1 }, 0],
+        [{ a: 1, b: 2 }, 0],
+        [{ a: 1 }, 1],
+        [{ a: 1, b: 1 }, 0]
+      ]),
+      new Map([
+        [{ b: 1 }, 0],
+        [{}, 0],
+        [{ a: 1, c: 1 }, 0]
+      ])
+    )
+  )
+
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        new Map([[{ a: 1 }, 'x']]),
+        new Map([[{ a: 1 }, 'y']]),
+        'should fail'
+      ),
+    /should fail/
+  )
+})
+
+test('partialDeepStrictEqual, map, ambiguous object keys, minimal', (t) => {
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Map([
+        [{ a: 1 }, 1],
+        [{ a: 1, b: 1 }, 1]
+      ]),
+      new Map([
+        [{ a: 1 }, 1],
+        [{ b: 1 }, 1]
+      ])
+    )
+  )
+})
+
+test('partialDeepStrictEqual, set', (t) => {
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Set([{ foo: 1, bar: 2 }]), new Set([{ foo: 1 }]))
+  )
+
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Set([{ foo: 1, bar: 2 }, { foo: 1 }]),
+      new Set([{ foo: 1 }, { foo: 1, bar: 2 }])
+    )
+  )
+})
+
+test('partialDeepStrictEqual, set, ambiguous members', (t) => {
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Set([
+        { a: 1, b: 1 },
+        { a: 1, c: 1 },
+        { a: 1, c: 1 },
+        { a: 1, b: 2 }
+      ]),
+      new Set([{ a: 1, b: 2 }, { a: 1 }, { a: 1, b: 1 }])
+    )
+  )
+
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Set([{ a: 2 }, { a: 1 }, { b: 1 }, { a: 1 }]),
+      new Set([{ b: 1 }, {}, { a: 2 }])
+    )
+  )
+
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Set([
+        { a: 1, c: 1 },
+        { a: 1, b: 2 },
+        { a: 1, b: 2 },
+        { a: 1, b: 1, c: 1 }
+      ]),
+      new Set([{ a: 1, b: 1 }, { a: 1 }, { a: 1, c: 1 }])
+    )
+  )
+
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        new Set([{ a: 1 }, { a: 1 }]),
+        new Set([{ a: 1 }, { b: 1 }]),
+        'should fail'
+      ),
+    /should fail/
+  )
+})
+
+test('partialDeepStrictEqual, set, ambiguous members, minimal', (t) => {
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Set([{ a: 1 }, { a: 1, b: 1 }]),
+      new Set([{ a: 1 }, { b: 1 }])
+    )
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Set([{ b: 1 }, { a: 1, b: 1 }, { b: 1 }]),
+      new Set([{ b: 1 }, { a: 1 }])
+    )
+  )
+})
+
+test('partialDeepStrictEqual, sparse array', (t) => {
+  t.execution(() => assert.partialDeepStrictEqual([1, , , undefined, , 3], [1, , undefined, 3]))
+
+  t.execution(() => {
+    const foo = new Array(15)
+    foo[0] = 1
+    foo[1] = 2
+    foo[5] = 100n
+    foo[10] = 3
+
+    const bar = new Array(12)
+    bar[0] = 1
+    bar[1] = 2
+    bar[5] = 3
+
+    assert.partialDeepStrictEqual(foo, bar)
+  })
+
+  t.exception(
+    () => assert.partialDeepStrictEqual([1, , , , 3], [1, , undefined, 3], 'should fail'),
+    /should fail/
+  )
+})
+
+// Which indexes the element match consumed has to survive descending into an
+// element, or the indexes get compared a second time by position.
+test('partialDeepStrictEqual, array, object elements', (t) => {
+  t.execution(() => assert.partialDeepStrictEqual([{ foo: 1 }, { bar: 2 }], [{ bar: 2 }]))
+  t.execution(() => assert.partialDeepStrictEqual([{ bar: 2 }, { foo: 1 }], [{ bar: 2 }]))
+  t.execution(() => assert.partialDeepStrictEqual([{ foo: 1 }, { bar: 2, baz: 3 }], [{ bar: 2 }]))
+  t.execution(() => assert.partialDeepStrictEqual([[9], [1, 2]], [[1]]))
+  t.execution(() =>
+    assert.partialDeepStrictEqual([{ foo: 1 }, { bar: 2 }], [{ foo: 1 }, { bar: 2 }])
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual([{ foo: 1 }, { bar: 2 }, { baz: 3 }], [{ foo: 1 }, { baz: 3 }])
+  )
+
+  t.exception(
+    () => assert.partialDeepStrictEqual([{ foo: 1 }, { bar: 2 }], [{ baz: 3 }], 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        [{ bar: 2 }, { foo: 1 }],
+        [{ foo: 1 }, { bar: 2 }],
+        'should fail'
+      ),
+    /should fail/
+  )
+})
+
+test('partialDeepStrictEqual, error', (t) => {
+  t.execution(() => assert.partialDeepStrictEqual(new Error('message'), new Error()))
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Error('message', { cause: 42 }), new Error('message'))
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Error('message', { cause: undefined }), new Error('message'))
+  )
+
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Error('message', { cause: 'boom' }),
+      new Error('message', { cause: undefined })
+    )
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        new Error('message'),
+        new Error('message', { cause: undefined }),
+        'should fail'
+      ),
+    /should fail/
+  )
+})
+
+// An `undefined` property on the expected error is not compared, but an own
+// `cause` still has to be present on both sides.
+test('partialDeepStrictEqual, error, undefined property', (t) => {
+  const message = new Error('message')
+  message.message = undefined
+
+  const name = new Error('message')
+  name.name = undefined
+
+  t.execution(() => assert.partialDeepStrictEqual(new Error('message'), message))
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Error('message'), name, 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Error('message'), new Error('other'), 'should fail'),
+    /should fail/
+  )
+})
+
+// Only `undefined` means the property is not compared. Every other falsy
+// message is a message.
+test('partialDeepStrictEqual, error, falsy message', (t) => {
+  const withMessage = (value) => {
+    const err = new Error('message')
+
+    err.message = value
+
+    return err
+  }
+
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Error('message'), withMessage(0), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Error('message'), withMessage(false), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Error('message'), withMessage(null), 'should fail'),
+    /should fail/
+  )
+
+  t.execution(() => assert.partialDeepStrictEqual(new Error('message'), withMessage('')))
+  t.execution(() => assert.partialDeepStrictEqual(new Error('message'), withMessage(undefined)))
+})
+
+test('partialDeepStrictEqual, error, undefined property, non-enumerable', (t) => {
+  const hidden = (value, key) => {
+    Object.defineProperty(value, key, { value: undefined, enumerable: false, configurable: true })
+
+    return value
+  }
+
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Error('message'), hidden(new Error('message'), 'name'))
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Error('message'), hidden(new Error('message'), 'errors'))
+  )
+})
+
+test('partialDeepStrictEqual, error, aggregate error', (t) => {
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new AggregateError([new Error()]), new AggregateError([]))
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new AggregateError([new Error('a'), new Error('b')], 'message'),
+      new AggregateError([new Error('b')], 'message')
+    )
+  )
+
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        new AggregateError([]),
+        new AggregateError([new Error()]),
+        'should fail'
+      ),
+    /should fail/
+  )
+})
+
+test('partialDeepStrictEqual, error, aggregate error, undefined errors', (t) => {
+  const expected = new AggregateError([], 'message')
+  expected.errors = undefined
+
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new AggregateError([new Error('inner')], 'message'), expected)
+  )
+})
+
+test('partialDeepStrictEqual, typed array', (t) => {
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Uint8Array([1, 2, 3, 4, 5]), new Uint8Array([1, 2, 3, 5]))
+  )
+})
+
+// A shorter expected typed array is matched against the bytes of the actual
+// one, not against its elements.
+test('partialDeepStrictEqual, typed array, byte subsequence', (t) => {
+  t.execution(() => assert.partialDeepStrictEqual(new Uint16Array([3, 1]), new Uint16Array([0])))
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Float64Array([0, 3, 2]), new Float64Array([0, 0]))
+  )
+  t.execution(() => assert.partialDeepStrictEqual(new Uint16Array([1, 2, 3]), new Uint16Array([2])))
+
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        new Uint16Array([1, 2]),
+        new Uint16Array([2, 1]),
+        'should fail'
+      ),
+    /should fail/
+  )
+})
+
+test('partialDeepStrictEqual, typed array, differing type', (t) => {
+  t.execution(() => assert.partialDeepStrictEqual(new Uint8Array([1, 2, 3]), Buffer.from([1])))
+  t.execution(() => assert.partialDeepStrictEqual(Buffer.from([1, 2, 3]), new Uint8Array([1])))
+
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Uint8Array([1, 2]), new Int8Array([1]), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(new Uint8Array([1, 2]), new Uint16Array([1]), 'should fail'),
+    /should fail/
+  )
+})
+
+// The byte indexes a typed array matched are its own, and must not go on to
+// excuse a mismatch in whatever is compared next.
+test('partialDeepStrictEqual, typed array, sibling values', (t) => {
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        { foo: new Uint8Array([1]), bar: { 0: 'a' } },
+        { foo: new Uint8Array([1]), bar: { 0: 'b' } },
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual({ bar: { 0: 'a' } }, { bar: { 0: 'b' } }, 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        { foo: Buffer.from([1]), bar: { 0: 'a' } },
+        { foo: Buffer.from([1]), bar: { 0: 'b' } },
+        'should fail'
+      ),
+    /should fail/
+  )
+
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      { foo: new Uint8Array([1, 2]), bar: [{ baz: 1 }, { qux: 2 }] },
+      { foo: new Uint8Array([1, 2]), bar: [{ qux: 2 }] }
+    )
+  )
+})
+
+test('partialDeepStrictEqual, typed array, float', (t) => {
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        new Float16Array([+0.0]), // lunte-disable-line no-undef
+        new Float16Array([-0.0]), // lunte-disable-line no-undef
+        'should fail'
+      ),
+    /should fail/
+  )
+})
+
+test('partialDeepStrictEqual, dataview', (t) => {
+  const dataView = (bytes, offset, length) => {
+    const { buffer } = new Uint8Array(bytes)
+
+    return length === undefined ? new DataView(buffer) : new DataView(buffer, offset, length)
+  }
+
+  t.execution(() => assert.partialDeepStrictEqual(dataView([1, 2]), dataView([1, 2])))
+  t.execution(() => assert.partialDeepStrictEqual(dataView([1, 2, 3]), dataView([3])))
+  t.execution(() => assert.partialDeepStrictEqual(dataView([1, 2]), dataView([])))
+  t.execution(() =>
+    assert.partialDeepStrictEqual(dataView([1, 2, 3, 4]), dataView([9, 2, 3, 9], 1, 2))
+  )
+
+  t.exception(
+    () => assert.partialDeepStrictEqual(dataView([1, 2]), dataView([3]), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(dataView([1]), dataView([1, 2]), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(dataView([1, 2, 3]), dataView([3, 1]), 'should fail'),
+    /should fail/
+  )
+})
+
+test('partialDeepStrictEqual, array, non-enumerable symbol', (t) => {
+  const foo = [1, 2, 3]
+
+  Object.defineProperty(foo, Symbol.for('test'), {
+    value: 'test',
+    enumerable: false
+  })
+
+  const bar = [1, 2, 3]
+
+  bar[Symbol.for('test')] = 'test'
+
+  t.exception(() => assert.partialDeepStrictEqual(foo, bar, 'should fail'), /should fail/)
+})
+
+test('partialDeepStrictEqual, object, numeric keys', (t) => {
+  t.exception(() => assert.partialDeepStrictEqual({ 0: 'a', 1: 'b' }, { 1: 'c' }))
+})
+
+// Only canonical array indexes are covered by the element comparison. Every
+// other digit-like key is an ordinary property and has to match.
+test('partialDeepStrictEqual, array, non-index keys', (t) => {
+  t.exception(
+    () => assert.partialDeepStrictEqual([1, 2, 3], Object.assign([], { '01': 5 }), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual([1, 2, 3], Object.assign([], { 4294967295: 5 }), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual([1, 2, 3], Object.assign([], { 4294967296: 5 }), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        Object.assign([1, 2], { '01': 5 }),
+        Object.assign([1], { '01': 6 }),
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        new Uint8Array([1, 2, 3]),
+        Object.assign(new Uint8Array([1]), { '01': 5 }),
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual([1, 2, 3], Object.assign([], { foo: 5 }), 'should fail'),
+    /should fail/
+  )
+
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      Object.assign([1, 2], { '01': 5 }),
+      Object.assign([1], { '01': 5 })
+    )
+  )
+})
+
+test('partialDeepStrictEqual, SharedArrayBuffer', (t) => {
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new SharedArrayBuffer(10), new SharedArrayBuffer(5))
+  )
+
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        new SharedArrayBuffer(5),
+        new SharedArrayBuffer(10),
+        'should fail'
+      ),
+    /should fail/
+  )
+})
+
+// Adapted from https://github.com/nodejs/node/blob/main/test/parallel/test-assert-partial-deep-equal.js
+test('partialDeepStrictEqual, node.js test suite', function (t) {
+  const x = ['x']
+
+  function createCircularObject() {
+    const obj = {}
+    obj.self = obj
+    obj.set = new Set([x, ['y']])
+    return obj
+  }
+
+  function createDeepNestedObject() {
+    return { level1: { level2: { level3: 'deepValue' } } }
+  }
+
+  /*
+  async function generateCryptoKey() {
+    const { KeyObject } = require('node:crypto')
+    const { subtle } = globalThis.crypto
+
+    const cryptoKey = await subtle.generateKey(
+      {
+        name: 'HMAC',
+        hash: 'SHA-256',
+        length: 256
+      },
+      true,
+      ['sign', 'verify']
+    )
+
+    const keyObject = KeyObject.from(cryptoKey)
+
+    return { cryptoKey, keyObject }
+  }
+  */
+
+  t.test('throws an error', (t) => {
+    const tests = [
+      {
+        description: 'throws when only actual is provided',
+        actual: { a: 1 },
+        expected: undefined
+      },
+      {
+        description: 'throws when unequal zeros are compared',
+        actual: 0,
+        expected: -0
+      },
+      {
+        description: 'throws when only expected is provided',
+        actual: undefined,
+        expected: { a: 1 }
+      },
+      {
+        description: 'throws when expected has more properties than actual',
+        actual: [1, 'two'],
+        expected: [1, 'two', true]
+      },
+      {
+        description: 'throws because expected has seven 2 while actual has six one',
+        actual: [1, 2, 2, 2, 2, 2, 2, 3],
+        expected: [1, 2, 2, 2, 2, 2, 2, 2]
+      },
+      {
+        description: 'throws when comparing two different sets with objects',
+        actual: new Set([{ a: 1 }]),
+        expected: new Set([{ a: 1 }, { b: 1 }])
+      },
+
+      {
+        description: 'throws when comparing two WeakSet objects',
+        actual: new WeakSet(),
+        expected: new WeakSet()
+      },
+      {
+        description: 'throws when comparing two WeakMap objects',
+        actual: new WeakMap(),
+        expected: new WeakMap()
+      },
+      {
+        description: 'throws when comparing two different objects',
+        actual: { a: 1, b: 'string' },
+        expected: { a: 2, b: 'string' }
+      },
+      {
+        description: 'throws when comparing two objects with different nested objects',
+        actual: createDeepNestedObject(),
+        expected: { level1: { level2: { level3: 'differentValue' } } }
+      },
+      {
+        description: 'throws when comparing two objects with different RegExp properties',
+        actual: { pattern: /abc/ },
+        expected: { pattern: /def/ }
+      },
+      {
+        description: 'throws when comparing two arrays with different elements',
+        actual: [1, 'two', true],
+        expected: [1, 'two', false]
+      },
+      {
+        description: 'throws when comparing [0] with [-0]',
+        actual: [0],
+        expected: [-0]
+      },
+      {
+        description: 'throws when comparing [0, 0, 0] with [0, -0]',
+        actual: [0, 0, 0],
+        expected: [0, -0]
+      },
+      {
+        description: 'throws when comparing ["-0"] with [-0]',
+        actual: ['-0'],
+        expected: [-0]
+      },
+      {
+        description: 'throws when comparing [-0] with [0]',
+        actual: [-0],
+        expected: [0]
+      },
+      {
+        description: 'throws when comparing [-0] with ["-0"]',
+        actual: [-0],
+        expected: ['-0']
+      },
+      {
+        description: 'throws when comparing ["0"] with [0]',
+        actual: ['0'],
+        expected: [0]
+      },
+      {
+        description: 'throws when comparing [0] with ["0"]',
+        actual: [0],
+        expected: ['0']
+      },
+      {
+        description: 'throws when comparing two Date objects with different times',
+        actual: new Date(0),
+        expected: new Date(1)
+      },
+      {
+        description: 'throws when comparing two objects with different large number of properties',
+        actual: Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`key${i}`, i])),
+        expected: Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`key${i}`, i + 1]))
+      },
+      {
+        description: 'throws when comparing two objects with different Symbols',
+        actual: { [Symbol('test')]: 'symbol' },
+        expected: { [Symbol('test')]: 'symbol' }
+      },
+      {
+        description: 'throws when comparing two objects with different array properties',
+        actual: { a: [1, 2, 3] },
+        expected: { a: [1, 2, 4] }
+      },
+      {
+        description: 'throws when comparing two objects with different function properties',
+        actual: { fn: () => {} },
+        expected: { fn: () => {} }
+      },
+      {
+        description: 'throws when comparing two objects with different Error message',
+        actual: { error: new Error('Test error 1') },
+        expected: { error: new Error('Test error 2') }
+      },
+      {
+        description: 'throws when comparing two objects with missing cause on the actual Error',
+        actual: { error: new Error('Test error 1') },
+        expected: { error: new Error('Test error 1', { cause: 42 }) }
+      },
+      {
+        description: 'throws when comparing two objects with missing message on the actual Error',
+        actual: { error: new Error() },
+        expected: { error: new Error('Test error 1') }
+      },
+      {
+        description: 'throws when comparing two Errors with missing cause on the actual Error',
+        actual: { error: new Error('Test error 1') },
+        expected: { error: new Error('Test error 1', { cause: undefined }) }
+      },
+      {
+        description:
+          'throws when comparing two AggregateErrors with missing message on the actual Error',
+        actual: { error: new AggregateError([], 'Test error 1') },
+        expected: { error: new AggregateError([new Error()], 'Test error 1') }
+      },
+      {
+        description:
+          'throws when comparing two objects with different TypedArray instances and content',
+        actual: { typedArray: new Uint8Array([1, 2, 3]) },
+        expected: { typedArray: new Uint8Array([4, 5, 6]) }
+      },
+      {
+        description: 'throws when comparing two Map objects with different entries',
+        actual: new Map([
+          ['key1', 'value1'],
+          ['key2', 'value2']
+        ]),
+        expected: new Map([
+          ['key1', 'value1'],
+          ['key3', 'value3']
+        ])
+      },
+      {
+        description: 'throws when comparing two Map objects with different keys',
+        actual: new Map([
+          ['key1', 'value1'],
+          ['key2', 'value2']
+        ]),
+        expected: new Map([
+          ['key1', 'value1'],
+          ['key3', 'value2']
+        ])
+      },
+      {
+        description: 'throws when the expected Map has more entries than the actual Map',
+        actual: new Map([
+          ['key1', 'value1'],
+          ['key2', 'value2']
+        ]),
+        expected: new Map([
+          ['key1', 'value1'],
+          ['key2', 'value2'],
+          ['key3', 'value3']
+        ])
+      },
+      {
+        description:
+          'throws when the nested array in the Map is not a subset of the other nested array',
+        actual: new Map([
+          ['key1', ['value1', 'value2']],
+          ['key2', 'value2']
+        ]),
+        expected: new Map([['key1', ['value3']]])
+      },
+      {
+        description: 'throws for maps with object keys and different values',
+        actual: new Map([
+          [{ a: 1 }, 'value1'],
+          [{ b: 2 }, 'value2'],
+          [{ b: 2 }, 'value4']
+        ]),
+        expected: new Map([
+          [{ a: 1 }, 'value1'],
+          [{ b: 2 }, 'value3']
+        ])
+      },
+      {
+        description: 'throws for maps with multiple identical object keys, just not enough',
+        actual: new Map([
+          [{ a: 1 }, 'value1'],
+          [{ b: 1 }, 'value2'],
+          [{ a: 1 }, 'value1']
+        ]),
+        expected: new Map([
+          [{ a: 1 }, 'value1'],
+          [{ a: 1 }, 'value1'],
+          [{ a: 1 }, 'value1']
+        ])
+      },
+      {
+        description: 'throws for Maps with mixed unequal entries',
+        actual: new Map([
+          [{ a: 2 }, 1],
+          [1, 1],
+          [{ b: 1 }, 1],
+          [[], 1],
+          [2, 1],
+          [{ a: 1 }, 1]
+        ]),
+        expected: new Map([
+          [{ a: 1 }, 1],
+          [[], 1],
+          [2, 1],
+          [{ a: 1 }, 1]
+        ])
+      },
+      {
+        description: 'throws for sets with different object values',
+        actual: new Set([{ a: 1 }, { a: 2 }, { a: 1 }, { a: 2 }]),
+        expected: new Set([{ a: 1 }, { a: 2 }, { a: 1 }, { a: 1 }])
+      },
+      {
+        description: 'throws when comparing two TypedArray instances with different content',
+        actual: new Uint8Array(10),
+        expected: () => {
+          const typedArray2 = new Int8Array(10)
+          Object.defineProperty(typedArray2, Symbol.toStringTag, {
+            value: 'Uint8Array'
+          })
+          Object.setPrototypeOf(typedArray2, Uint8Array.prototype)
+
+          return typedArray2
+        }
+      },
+      /*
+      {
+        description:
+          'throws when comparing two Set objects from different realms with different values',
+        actual: new vm.runInNewContext('new Set(["value1", "value2"])'),
+        expected: new Set(['value1', 'value3'])
+      },
+      */
+      {
+        description: 'throws when comparing two Set objects with different values',
+        actual: new Set(['value1', 'value2']),
+        expected: new Set(['value1', 'value3'])
+      },
+      {
+        description: 'throws when comparing one subset object with another',
+        actual: { a: 1, b: 2, c: 3 },
+        expected: { b: '2' }
+      },
+      {
+        description: 'throws when comparing one subset array with another',
+        actual: [1, 2, 3],
+        expected: ['2']
+      },
+      {
+        description: 'throws when comparing an array with symbol properties not matching',
+        actual: (() => {
+          const array = [1, 2, 3]
+          array[Symbol.for('test')] = 'test'
+          return array
+        })(),
+        expected: (() => {
+          const array = [1, 2, 3]
+          array[Symbol.for('test')] = 'different'
+          return array
+        })()
+      },
+      {
+        description: 'throws when comparing an array with extra properties not matching',
+        actual: (() => {
+          const array = [1, 2, 3]
+          array.extra = 'test'
+          return array
+        })(),
+        expected: (() => {
+          const array = [1, 2, 3]
+          array.extra = 'different'
+          return array
+        })()
+      },
+      {
+        description: 'throws when comparing a non matching sparse array',
+        actual: (() => {
+          const array = new Array(1000)
+          array[90] = 1
+          array[92] = 2
+          array[95] = 1
+          array[96] = 2
+          array.foo = 'bar'
+          array.extra = 'test'
+          return array
+        })(),
+        expected: (() => {
+          const array = new Array(1000)
+          array[90] = 1
+          array[92] = 1
+          array[95] = 1
+          array.extra = 'test'
+          array.foo = 'bar'
+          return array
+        })()
+      },
+      {
+        description: 'throws when comparing a same length sparse array with actual less keys',
+        actual: (() => {
+          const array = new Array(1000)
+          array[90] = 1
+          array[92] = 1
+          return array
+        })(),
+        expected: (() => {
+          const array = new Array(1000)
+          array[90] = 1
+          array[92] = 1
+          array[95] = 1
+          return array
+        })()
+      },
+      {
+        description:
+          'throws when comparing an array with symbol properties matching but other enumerability',
+        actual: (() => {
+          const array = [1, 2, 3]
+          array[Symbol.for('abc')] = 'test'
+          Object.defineProperty(array, Symbol.for('test'), {
+            value: 'test',
+            enumerable: false
+          })
+          array[Symbol.for('other')] = 'test'
+          return array
+        })(),
+        expected: (() => {
+          const array = [1, 2, 3]
+          array[Symbol.for('test')] = 'test'
+          return array
+        })()
+      },
+      {
+        description:
+          'throws comparing an array with extra properties matching but other enumerability',
+        actual: (() => {
+          const array = [1, 2, 3]
+          array.alsoIgnored = [{ nested: { property: true } }]
+          Object.defineProperty(array, 'extra', {
+            value: 'test',
+            enumerable: false
+          })
+          array.ignored = 'test'
+          return array
+        })(),
+        expected: (() => {
+          const array = [1, 2, 3]
+          array.extra = 'test'
+          return array
+        })()
+      },
+      {
+        description: 'throws when comparing an ArrayBuffer with a Uint8Array',
+        actual: new ArrayBuffer(3),
+        expected: new Uint8Array(3)
+      },
+      {
+        description: 'throws when comparing an TypedArrays with symbol properties not matching',
+        actual: (() => {
+          const typed = new Uint8Array(3)
+          typed[Symbol.for('test')] = 'test'
+          return typed
+        })(),
+        expected: (() => {
+          const typed = new Uint8Array(3)
+          typed[Symbol.for('test')] = 'different'
+          return typed
+        })()
+      },
+      {
+        description: 'throws when comparing a ArrayBuffer with a SharedArrayBuffer',
+        actual: new ArrayBuffer(3),
+        expected: new SharedArrayBuffer(3)
+      },
+      {
+        description: 'throws when comparing a SharedArrayBuffer with an ArrayBuffer',
+        actual: new SharedArrayBuffer(3),
+        expected: new ArrayBuffer(3)
+      },
+      {
+        description: 'throws when comparing an Int16Array with a Uint16Array',
+        actual: new Int16Array(3),
+        expected: new Uint16Array(3)
+      },
+      {
+        description: 'throws when comparing two dataviews with different buffers',
+        actual: { dataView: new DataView(new ArrayBuffer(3)) },
+        expected: { dataView: new DataView(new ArrayBuffer(4)) }
+      },
+      {
+        description:
+          'throws because expected Uint8Array(SharedArrayBuffer) is not a subset of actual',
+        actual: { typedArray: new Uint8Array(new SharedArrayBuffer(3)) },
+        expected: { typedArray: new Uint8Array(new SharedArrayBuffer(5)) }
+      },
+      {
+        description: 'throws because expected SharedArrayBuffer is not a subset of actual',
+        actual: { typedArray: new SharedArrayBuffer(3) },
+        expected: { typedArray: new SharedArrayBuffer(5) }
+      },
+      {
+        description: 'throws when comparing a DataView with a TypedArray',
+        actual: { dataView: new DataView(new ArrayBuffer(3)) },
+        expected: { dataView: new Uint8Array(3) }
+      },
+      {
+        description: 'throws when comparing a TypedArray with a DataView',
+        actual: { dataView: new Uint8Array(3) },
+        expected: { dataView: new DataView(new ArrayBuffer(3)) }
+      },
+      {
+        description: 'throws when comparing Float16Array([+0.0]) with Float16Array([-0.0])',
+        actual: new Float16Array([+0.0]), // lunte-disable-line no-undef
+        expected: new Float16Array([-0.0]) // lunte-disable-line no-undef
+      },
+      {
+        description: 'throws when comparing Float32Array([+0.0]) with Float32Array([-0.0])',
+        actual: new Float32Array([+0.0]),
+        expected: new Float32Array([-0.0])
+      },
+      {
+        description: 'throws when comparing two Uint8Array objects with non-matching entries',
+        actual: { typedArray: new Uint8Array([1, 2, 3, 4, 5]) },
+        expected: { typedArray: new Uint8Array([1, 333, 2, 4]) }
+      },
+      {
+        description: 'throws when comparing two different urls',
+        actual: new URL('http://foo'),
+        expected: new URL('http://bar')
+      },
+      {
+        description:
+          'throws when comparing SharedArrayBuffers when expected has different elements actual',
+        actual: (() => {
+          const sharedBuffer = new SharedArrayBuffer(4 * Int32Array.BYTES_PER_ELEMENT)
+          const sharedArray = new Int32Array(sharedBuffer)
+
+          sharedArray[0] = 1
+          sharedArray[1] = 2
+          sharedArray[2] = 3
+
+          return sharedBuffer
+        })(),
+        expected: (() => {
+          const sharedBuffer = new SharedArrayBuffer(4 * Int32Array.BYTES_PER_ELEMENT)
+          const sharedArray = new Int32Array(sharedBuffer)
+
+          sharedArray[0] = 1
+          sharedArray[1] = 2
+          sharedArray[2] = 6
+
+          return sharedBuffer
+        })()
+      }
+    ]
+
+    /*
+    if (common.hasCrypto) {
+      tests.push({
+        description: 'throws when comparing two objects with different CryptoKey instances objects',
+        actual: async () => {
+          return generateCryptoKey()
+        },
+        expected: async () => {
+          return generateCryptoKey()
+        }
+      })
+
+      const { createSecretKey } = require('node:crypto')
+
+      tests.push({
+        description: 'throws when comparing two objects with different KeyObject instances objects',
+        actual: createSecretKey(Buffer.alloc(1, 0)),
+        expected: createSecretKey(Buffer.alloc(1, 1))
+      })
+    }
+    */
+
+    for (const { description, actual, expected } of tests) {
+      t.exception(() => assert.partialDeepStrictEqual(actual, expected), description)
+    }
+  })
+
+  t.test('does not throw an error', (t) => {
+    const sym = Symbol('test')
+    const func = () => {}
+
+    const tests = [
+      {
+        description: 'compares two identical simple objects',
+        actual: { a: 1, b: 'string' },
+        expected: { a: 1, b: 'string' }
+      },
+      {
+        description: 'compares two objects with different property order',
+        actual: { a: 1, b: 'string' },
+        expected: { b: 'string', a: 1 }
+      },
+      {
+        description: 'compares two deeply nested objects with partial equality',
+        actual: { a: { nested: { property: true, some: 'other' } } },
+        expected: { a: { nested: { property: true } } }
+      },
+      /*
+      {
+        description: 'compares plain objects from different realms',
+        actual: vm.runInNewContext(`({
+          a: 1,
+          b: 2n,
+          c: "3",
+          d: /4/,
+          e: new Set([5]),
+          f: [6],
+          g: new Uint8Array()
+        })`),
+        expected: { b: 2n, e: new Set([5]), f: [6], g: new Uint8Array() }
+      },
+      */
+      {
+        description: 'compares two integers',
+        actual: 1,
+        expected: 1
+      },
+      {
+        description: 'compares two strings',
+        actual: '1',
+        expected: '1'
+      },
+      {
+        description: 'compares two objects with nested objects',
+        actual: createDeepNestedObject(),
+        expected: createDeepNestedObject()
+      },
+      {
+        description: 'compares two objects with circular references',
+        actual: createCircularObject(),
+        expected: createCircularObject()
+      },
+      {
+        description: 'compares two arrays with identical elements',
+        actual: [1, 'two', true],
+        expected: [1, 'two', true]
+      },
+      {
+        description: 'compares [0] with [0]',
+        actual: [0],
+        expected: [0]
+      },
+      {
+        description: 'compares [-0] with [-0]',
+        actual: [-0],
+        expected: [-0]
+      },
+      {
+        description: 'compares [0, -0, 0] with [0, 0]',
+        actual: [0, -0, 0],
+        expected: [0, 0]
+      },
+      {
+        description: 'comparing an array with symbol properties matching',
+        actual: (() => {
+          const array = [1, 2, 3]
+          array[Symbol.for('abc')] = 'test'
+          array[Symbol.for('test')] = 'test'
+          Object.defineProperty(array, Symbol.for('hidden'), {
+            value: 'hidden',
+            enumerable: false
+          })
+          return array
+        })(),
+        expected: (() => {
+          const array = [1, 2, 3]
+          array[Symbol.for('test')] = 'test'
+          return array
+        })()
+      },
+      {
+        description: 'comparing an array with extra properties matching',
+        actual: (() => {
+          const array = [1, 2, 3]
+          array.alsoIgnored = [{ nested: { property: true } }]
+          array.extra = 'test'
+          array.ignored = 'test'
+          return array
+        })(),
+        expected: (() => {
+          const array = [1, 2, 3]
+          array.extra = 'test'
+          Object.defineProperty(array, 'ignored', { enumerable: false })
+          Object.defineProperty(array, Symbol.for('hidden'), {
+            value: 'hidden',
+            enumerable: false
+          })
+          return array
+        })()
+      },
+      {
+        description: 'compares two Date objects with the same time',
+        actual: new Date(0),
+        expected: new Date(0)
+      },
+      {
+        description: 'compares two objects with large number of properties',
+        actual: Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`key${i}`, i])),
+        expected: Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`key${i}`, i]))
+      },
+      {
+        description: 'compares two objects with Symbol properties',
+        actual: { [sym]: 'symbol' },
+        expected: { [sym]: 'symbol' }
+      },
+      {
+        description: 'compares two objects with RegExp properties',
+        actual: { pattern: /abc/ },
+        expected: { pattern: /abc/ }
+      },
+      {
+        description: 'compares two objects with identical function properties',
+        actual: { fn: func },
+        expected: { fn: func }
+      },
+      {
+        description: 'compares two objects with mixed types of properties',
+        actual: { num: 1, str: 'test', bool: true, sym },
+        expected: { num: 1, str: 'test', bool: true, sym }
+      },
+      {
+        description: 'compares two objects with Buffers',
+        actual: { buf: Buffer.from('Node.js') },
+        expected: { buf: Buffer.from('Node.js') }
+      },
+      {
+        description: 'compares two objects with identical Error properties',
+        actual: { error: new Error('Test error') },
+        expected: { error: new Error('Test error') }
+      },
+      {
+        description: 'compares two Uint8Array objects',
+        actual: { typedArray: new Uint8Array([1, 2, 3, 4, 5]) },
+        expected: { typedArray: new Uint8Array([1, 2, 3, 5]) }
+      },
+      {
+        description: 'compares two Int16Array objects',
+        actual: { typedArray: new Int16Array([1, 2, 3, 4, 5]) },
+        expected: { typedArray: new Int16Array([1, 2, 3]) }
+      },
+      {
+        description: 'compares two DataView objects with the same buffer and different views',
+        actual: { dataView: new DataView(new ArrayBuffer(8), 0, 4) },
+        expected: { dataView: new DataView(new ArrayBuffer(8), 4, 4) }
+      },
+      {
+        description: 'compares two DataView objects with different buffers',
+        actual: { dataView: new DataView(new ArrayBuffer(8)) },
+        expected: { dataView: new DataView(new ArrayBuffer(8)) }
+      },
+      {
+        description: 'compares two DataView objects with the same buffer and same views',
+        actual: { dataView: new DataView(new ArrayBuffer(8), 0, 8) },
+        expected: { dataView: new DataView(new ArrayBuffer(8), 0, 8) }
+      },
+      {
+        description: 'compares two SharedArrayBuffers with the same length',
+        actual: new SharedArrayBuffer(3),
+        expected: new SharedArrayBuffer(3)
+      },
+      {
+        description: 'compares two Uint8Array objects from SharedArrayBuffer',
+        actual: { typedArray: new Uint8Array(new SharedArrayBuffer(5)) },
+        expected: { typedArray: new Uint8Array(new SharedArrayBuffer(3)) }
+      },
+      {
+        description: 'compares two Int16Array objects from SharedArrayBuffer',
+        actual: { typedArray: new Int16Array(new SharedArrayBuffer(10)) },
+        expected: { typedArray: new Int16Array(new SharedArrayBuffer(6)) }
+      },
+      {
+        description:
+          'compares two DataView objects with the same SharedArrayBuffer and different views',
+        actual: { dataView: new DataView(new SharedArrayBuffer(8), 0, 4) },
+        expected: { dataView: new DataView(new SharedArrayBuffer(8), 4, 4) }
+      },
+      {
+        description: 'compares two DataView objects with different SharedArrayBuffers',
+        actual: { dataView: new DataView(new SharedArrayBuffer(8)) },
+        expected: { dataView: new DataView(new SharedArrayBuffer(8)) }
+      },
+      {
+        description: 'compares two DataView objects with the same SharedArrayBuffer and same views',
+        actual: { dataView: new DataView(new SharedArrayBuffer(8), 0, 8) },
+        expected: { dataView: new DataView(new SharedArrayBuffer(8), 0, 8) }
+      },
+      {
+        description: 'compares two SharedArrayBuffers',
+        actual: { typedArray: new SharedArrayBuffer(5) },
+        expected: { typedArray: new SharedArrayBuffer(3) }
+      },
+      {
+        description: 'compares two SharedArrayBuffers with data inside',
+        actual: (() => {
+          const sharedBuffer = new SharedArrayBuffer(4 * Int32Array.BYTES_PER_ELEMENT)
+          const sharedArray = new Int32Array(sharedBuffer)
+
+          sharedArray[0] = 1
+          sharedArray[1] = 2
+          sharedArray[2] = 3
+          sharedArray[3] = 4
+
+          return sharedBuffer
+        })(),
+        expected: (() => {
+          const sharedBuffer = new SharedArrayBuffer(3 * Int32Array.BYTES_PER_ELEMENT)
+          const sharedArray = new Int32Array(sharedBuffer)
+
+          sharedArray[0] = 1
+          sharedArray[1] = 2
+          sharedArray[2] = 3
+
+          return sharedBuffer
+        })()
+      },
+      {
+        description: 'compares two Map objects with identical entries',
+        actual: new Map([
+          ['key1', 'value1'],
+          ['key2', 'value2']
+        ]),
+        expected: new Map([
+          ['key1', 'value1'],
+          ['key2', 'value2']
+        ])
+      },
+      {
+        description: 'compares two Map where one is a subset of the other',
+        actual: new Map([
+          ['key1', { nested: { property: true } }],
+          ['key2', new Set([1, 2, 3])],
+          ['key3', new Uint8Array([1, 2, 3])]
+        ]),
+        expected: new Map([
+          ['key1', { nested: { property: true } }],
+          ['key2', new Set([1, 2, 3])],
+          ['key3', new Uint8Array([1, 2, 3])]
+        ])
+      },
+      {
+        description: 'compares maps with object keys',
+        actual: new Map([
+          [{ a: 1 }, 'value1'],
+          [{ a: 2 }, 'value2'],
+          [{ a: 2 }, 'value3'],
+          [{ a: 2 }, 'value3'],
+          [{ a: 2 }, 'value4'],
+          [{ a: 1 }, 'value2']
+        ]),
+        expected: new Map([
+          [{ a: 2 }, 'value3'],
+          [{ a: 1 }, 'value1'],
+          [{ a: 2 }, 'value3'],
+          [{ a: 1 }, 'value2']
+        ])
+      },
+      {
+        describe: 'compares two simple sparse arrays',
+        actual: new Array(1_000),
+        expected: new Array(100)
+      },
+      {
+        describe: 'compares two identical sparse arrays',
+        actual: (() => {
+          const array = new Array(100)
+          array[1] = 2
+          return array
+        })(),
+        expected: (() => {
+          const array = new Array(100)
+          array[1] = 2
+          return array
+        })()
+      },
+      {
+        describe: 'compares two big sparse arrays',
+        actual: (() => {
+          const array = new Array(150_000_000)
+          array[0] = 1
+          array[1] = 2
+          array[100] = 100n
+          array[200_000] = 3
+          array[1_200_000] = 4
+          array[120_200_000] = []
+          return array
+        })(),
+        expected: (() => {
+          const array = new Array(100_000_000)
+          array[0] = 1
+          array[1] = 2
+          array[200_000] = 3
+          array[1_200_000] = 4
+          return array
+        })()
+      },
+      {
+        describe: 'compares two array of objects',
+        actual: [{ a: 5 }],
+        expected: [{ a: 5 }]
+      },
+      {
+        describe: 'compares two array of objects where expected is a subset of actual',
+        actual: [{ a: 5 }, { b: 5 }],
+        expected: [{ a: 5 }]
+      },
+      {
+        description: 'compares two Set objects with identical objects',
+        actual: new Set([{ a: 1 }]),
+        expected: new Set([{ a: 1 }])
+      },
+      {
+        description: 'compares two Set objects where expected is a subset of actual',
+        actual: new Set([{ a: 1 }, { b: 1 }]),
+        expected: new Set([{ a: 1 }])
+      },
+      {
+        description: 'compares two Sets with mixed entries',
+        actual: new Set([{ b: 1 }, [], 1, { a: 1 }, 2, []]),
+        expected: new Set([{ a: 1 }, 2, []])
+      },
+      {
+        description: 'compares two Sets with mixed entries different order',
+        actual: new Set([{ a: 1 }, 1, { b: 1 }, [], 2, { a: 1 }]),
+        expected: new Set([{ a: 1 }, [], 2, { a: 1 }])
+      },
+      {
+        description: 'compares two Sets with mixed entries different order 2',
+        actual: new Set([{ a: 1 }, { a: 1 }, 1, { b: 1 }, [], 2, { a: 1 }]),
+        expected: new Set([{ a: 1 }, [], 2, { a: 1 }])
+      },
+      {
+        description: 'compares two Set objects with identical arrays',
+        actual: new Set(['value1', 'value2']),
+        expected: new Set(['value1', 'value2'])
+      },
+      {
+        description: 'compares two Set objects',
+        actual: new Set(['value1', 'value2', 'value3']),
+        expected: new Set(['value1', 'value2'])
+      },
+      /*
+      {
+        description: 'compares two Map objects from different realms with identical entries',
+        actual: new vm.runInNewContext('new Map([["key1", "value1"], ["key2", "value2"]])'),
+        expected: new Map([
+          ['key1', 'value1'],
+          ['key2', 'value2']
+        ])
+      },
+      */
+      {
+        description: 'compares two Map objects where expected is a subset of actual',
+        actual: new Map([
+          ['key1', 'value1'],
+          ['key2', 'value2']
+        ]),
+        expected: new Map([['key1', 'value1']])
+      },
+      {
+        description: 'compares two deeply nested Maps',
+        actual: {
+          a: {
+            b: {
+              c: new Map([
+                ['key1', 'value1'],
+                ['key2', 'value2']
+              ])
+            },
+            z: [1, 2, 3]
+          }
+        },
+        expected: {
+          a: {
+            z: [1, 2, 3],
+            b: {
+              c: new Map([['key1', 'value1']])
+            }
+          }
+        }
+      },
+      {
+        description: 'compares Maps nested into Maps',
+        actual: new Map([
+          [
+            'key1',
+            new Map([
+              ['nestedKey1', 'nestedValue1'],
+              ['nestedKey2', 'nestedValue2']
+            ])
+          ],
+          ['key2', 'value2']
+        ]),
+        expected: new Map([['key1', new Map([['nestedKey1', 'nestedValue1']])]])
+      },
+      {
+        description: 'compares Maps with nested arrays inside',
+        actual: new Map([
+          ['key1', ['value1', 'value2']],
+          ['key2', 'value2']
+        ]),
+        expected: new Map([['key1', ['value1', 'value2']]])
+      },
+      {
+        description: 'compares two objects with identical getter/setter properties',
+        actual: (() => {
+          let value = 'test'
+          return Object.defineProperty({}, 'prop', {
+            get: () => value,
+            set: (newValue) => {
+              value = newValue
+            },
+            enumerable: true,
+            configurable: true
+          })
+        })(),
+        expected: (() => {
+          let value = 'test'
+          return Object.defineProperty({}, 'prop', {
+            get: () => value,
+            set: (newValue) => {
+              value = newValue
+            },
+            enumerable: true,
+            configurable: true
+          })
+        })()
+      },
+      {
+        description: 'compares two objects with no prototype',
+        actual: { __proto__: null, prop: 'value' },
+        expected: { __proto__: null, prop: 'value' }
+      },
+      {
+        description: 'compares two objects with identical non-enumerable properties',
+        actual: (() => {
+          const obj = {}
+          Object.defineProperty(obj, 'hidden', {
+            value: 'secret',
+            enumerable: false
+          })
+          return obj
+        })(),
+        expected: (() => {
+          const obj = {}
+          Object.defineProperty(obj, 'hidden', {
+            value: 'secret',
+            enumerable: false
+          })
+          return obj
+        })()
+      },
+      {
+        description: 'compares two identical primitives, string',
+        actual: 'foo',
+        expected: 'foo'
+      },
+      {
+        description: 'compares two identical primitives, number',
+        actual: 1,
+        expected: 1
+      },
+      {
+        description: 'compares two identical primitives, boolean',
+        actual: false,
+        expected: false
+      },
+      {
+        description: 'compares two identical primitives, null',
+        actual: null,
+        expected: null
+      },
+      {
+        description: 'compares two identical primitives, undefined',
+        actual: undefined,
+        expected: undefined
+      },
+      {
+        description: 'compares two identical primitives, Symbol',
+        actual: sym,
+        expected: sym
+      },
+      {
+        description: 'compares one subset object with another',
+        actual: { a: 1, b: 2, c: 3 },
+        expected: { b: 2 }
+      },
+      {
+        description: 'compares one subset array with another',
+        actual: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+        expected: [2, 5, 6, 7, 8]
+      },
+      /*
+      {
+        description: 'ensures that File extends Blob',
+        actual: Object.getPrototypeOf(File.prototype),
+        expected: Blob.prototype
+      },
+      */
+      {
+        description: 'compares NaN with NaN',
+        actual: NaN,
+        expected: NaN
+      },
+      {
+        description: 'compares two identical urls',
+        actual: new URL('http://foo'),
+        expected: new URL('http://foo')
+      },
+      {
+        description: 'compares a more complex object with additional parts on the actual',
+        actual: [
+          {
+            foo: 'yarp',
+            nope: {
+              bar: '123',
+              a: [1, 2, 0],
+              c: {},
+              b: [
+                {
+                  foo: 'yarp',
+                  nope: { bar: '123', a: [1, 2, 0], c: {}, b: [] }
+                },
+                {
+                  foo: 'yarp',
+                  nope: { bar: '123', a: [1, 2, 1], c: {}, b: [] }
+                }
+              ]
+            }
+          }
+        ],
+        expected: [
+          {
+            foo: 'yarp',
+            nope: {
+              bar: '123',
+              c: {},
+              b: [
+                { foo: 'yarp', nope: { bar: '123', c: {}, b: [] } },
+                { foo: 'yarp', nope: { bar: '123', c: {}, b: [] } }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        description: 'comparing two Errors with missing cause on the expected Error',
+        actual: { error: new Error('Test error 1', { cause: 42 }) },
+        expected: { error: new Error('Test error 1') }
+      },
+      {
+        description: 'comparing two Errors with cause set to undefined on the actual Error',
+        actual: { error: new Error('Test error 1', { cause: undefined }) },
+        expected: { error: new Error('Test error 1') }
+      },
+      {
+        description: 'comparing two Errors with missing message on the expected Error',
+        actual: { error: new Error('Test error 1') },
+        expected: { error: new Error() }
+      },
+      {
+        description:
+          'comparing two AggregateErrors with no message or errors on the expected Error',
+        actual: { error: new AggregateError([new Error(), 123]) },
+        expected: { error: new AggregateError([]) }
+      }
+    ]
+
+    for (const { description, actual, expected } of tests) {
+      t.execution(() => assert.partialDeepStrictEqual(actual, expected), description)
+    }
+  })
+})
+
+test('AssertionError', (t) => {
+  const err = new assert.AssertionError({ actual: 1, expected: 2, operator: '==' })
+
+  t.is(err.name, 'AssertionError')
+  t.is(err.code, 'ASSERTION')
 })

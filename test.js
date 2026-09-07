@@ -1,5 +1,6 @@
 const test = require('brittle')
 const assert = require('.')
+const permute = require('./lib/permutations')
 
 test('basic', (t) => {
   t.execution(() => assert(true))
@@ -1662,7 +1663,7 @@ test('partialDeepStrictEqual, prototype, differing kind', (t) => {
 // `Object.prototype.toString` separates the kinds that carry no
 // `Symbol.toStringTag` of their own, such as errors, regular expressions,
 // boxed primitives and arguments objects.
-test.solo('partialDeepStrictEqual, prototype, object tag', (t) => {
+test('partialDeepStrictEqual, prototype, object tag', (t) => {
   const args = function () {
     return arguments
   }
@@ -3427,4 +3428,54 @@ test('AssertionError', (t) => {
 
   t.is(err.name, 'AssertionError')
   t.is(err.code, 'ASSERTION')
+})
+
+test('permutation', (t) => {
+  t.alike(permute([1]), [[1]])
+
+  t.alike(permute([1, 2]), [
+    [1, 2],
+    [2, 1]
+  ])
+
+  t.alike(permute([1, 2, 3]), [
+    [1, 2, 3],
+    [1, 3, 2],
+    [3, 1, 2],
+    [3, 2, 1],
+    [2, 3, 1],
+    [2, 1, 3]
+  ])
+
+  t.alike(permute([1, 2, 3, 4]), [
+    [1, 2, 3, 4],
+    [1, 2, 4, 3],
+    [1, 4, 2, 3],
+    [4, 1, 2, 3],
+    [4, 1, 3, 2],
+    [1, 4, 3, 2],
+    [1, 3, 4, 2],
+    [1, 3, 2, 4],
+    [3, 1, 2, 4],
+    [3, 1, 4, 2],
+    [3, 4, 1, 2],
+    [4, 3, 1, 2],
+    [4, 3, 2, 1],
+    [3, 4, 2, 1],
+    [3, 2, 4, 1],
+    [3, 2, 1, 4],
+    [2, 3, 1, 4],
+    [2, 3, 4, 1],
+    [2, 4, 3, 1],
+    [4, 2, 3, 1],
+    [4, 2, 1, 3],
+    [2, 4, 1, 3],
+    [2, 1, 4, 3],
+    [2, 1, 3, 4]
+  ])
+
+  t.alike(permute([[1], [2]]), [
+    [[1], [2]],
+    [[2], [1]]
+  ])
 })

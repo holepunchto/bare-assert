@@ -474,14 +474,16 @@ function deepStrictEqualArrayUnordered(actual, expected, opts) {
 }
 
 function partialDeepStrictEqualArrayUnordered(actual, expected, opts) {
-  const expectedPermutations = permute(expected)
+  const permutations = permute(expected)
 
-  for (let i = 0; i < expectedPermutations.length; i++) {
-    const currentExpected = expectedPermutations[i]
+  let next = permutations.next()
 
-    if (deepStrictEqualArrayUnordered(actual.slice(), currentExpected, opts)) {
+  while (next.done !== true) {
+    if (deepStrictEqualArrayUnordered(actual.slice(), next.value, opts)) {
       return true
     }
+
+    next = permutations.next()
   }
 
   return false

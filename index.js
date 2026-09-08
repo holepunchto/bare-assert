@@ -651,10 +651,13 @@ function getAllKeys(list) {
   let keys = new Set()
 
   for (const item of list) {
-    const type = getType(item)
+    if (Array.isArray(item)) {
+      keys = new Set([...keys, ...Array.from(getAllKeys(item))])
+    }
 
-    if (type.isArray()) keys = new Set([...keys, ...Array.from(getAllKeys(item))])
-    if (type.isObject()) keys = new Set([...keys, ...getEnumerableKeys(item)])
+    if (typeof item === 'object' && item !== null) {
+      keys = new Set([...keys, ...getEnumerableKeys(item)])
+    }
   }
 
   return keys

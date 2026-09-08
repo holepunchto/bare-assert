@@ -802,6 +802,33 @@ test('deepStrictEqual, error, cause property', (t) => {
   )
 })
 
+// An own `cause` on one side and none on the other is a difference whichever
+// side carries it.
+test('deepStrictEqual, error, cause property, one sided', (t) => {
+  t.exception(
+    () =>
+      assert.deepStrictEqual(
+        new Error('err', { cause: undefined }),
+        new Error('err'),
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.deepStrictEqual(
+        new Error('err'),
+        new Error('err', { cause: undefined }),
+        'should fail'
+      ),
+    /should fail/
+  )
+
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Error('err', { cause: undefined }), new Error('err'))
+  )
+})
+
 test('deepStrictEqual, error, aggregate error', (t) => {
   t.execution(() =>
     assert.deepStrictEqual(
@@ -1753,6 +1780,40 @@ test('partialDeepStrictEqual, prototype, replaced prototype', (t) => {
   )
 })
 
+// A boxed value is equal to another of the same type holding the same value.
+// Neither the type nor the sign of a zero is negotiable.
+test('partialDeepStrictEqual, boxed value', (t) => {
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Number(0), new String(''), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(new String('1'), new Number(1), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Boolean(true), new Number(1), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Number(-0), new Number(0), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Number(1), new Number(2), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(Object(1n), new Number(1), 'should fail'),
+    /should fail/
+  )
+  t.exception(() => assert.partialDeepStrictEqual({}, new Number(0), 'should fail'), /should fail/)
+  t.exception(() => assert.partialDeepStrictEqual(new Number(0), {}, 'should fail'), /should fail/)
+
+  t.execution(() => assert.partialDeepStrictEqual(new Number(1), new Number(1)))
+  t.execution(() => assert.partialDeepStrictEqual(new String('ab'), new String('ab')))
+})
+
 test('partialDeepStrictEqual, map', (t) => {
   const foo = new Map([
     [{ a: 1 }, 'value1'],
@@ -1905,6 +1966,29 @@ test('partialDeepStrictEqual, set, ambiguous members, minimal', (t) => {
   )
 })
 
+// Matching object members must not cost a factorial in the number of expected
+// members. A pair that cannot be matched is the worst case, because every
+// candidate ordering is tried before it gives up. Nine members is the point
+// where that becomes impossible to miss: Node answers in a millisecond, and
+// each further member multiplies the wait by the next integer.
+test('partialDeepStrictEqual, set, many object members', (t) => {
+  const actual = new Set()
+  const expected = new Set()
+
+  for (let i = 0; i < 9; i++) actual.add({ foo: 1, index: i })
+  for (let i = 0; i < 8; i++) expected.add({ foo: 1, other: i })
+
+  expected.add({ unmatchable: true })
+
+  const start = Date.now()
+
+  t.exception(() => assert.partialDeepStrictEqual(actual, expected, 'should fail'), /should fail/)
+
+  const elapsed = Date.now() - start
+
+  t.ok(elapsed < 200, `compared in ${elapsed}ms`)
+})
+
 test('partialDeepStrictEqual, sparse array', (t) => {
   t.execution(() => assert.partialDeepStrictEqual([1, , , undefined, , 3], [1, , undefined, 3]))
 
@@ -2030,6 +2114,52 @@ test('partialDeepStrictEqual, error, falsy message', (t) => {
 
   t.execution(() => assert.partialDeepStrictEqual(new Error('message'), withMessage('')))
   t.execution(() => assert.partialDeepStrictEqual(new Error('message'), withMessage(undefined)))
+})
+
+// An empty string stands for "not compared" on `message` alone. On the other
+// error properties it is a value like any other.
+test('partialDeepStrictEqual, error, empty property', (t) => {
+  const hidden = (value, key, property) => {
+    Object.defineProperty(value, key, { value: property, enumerable: false, configurable: true })
+
+    return value
+  }
+
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        new Error('message'),
+        hidden(new Error('message'), 'name', ''),
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        new Error('message', { cause: 'boom' }),
+        new Error('message', { cause: '' }),
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        new AggregateError([new Error('inner')], 'message'),
+        hidden(new AggregateError([], 'message'), 'errors', ''),
+        'should fail'
+      ),
+    /should fail/
+  )
+
+  t.execution(() => assert.partialDeepStrictEqual(new Error(''), new Error('')))
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Error('message', { cause: '' }),
+      new Error('message', { cause: '' })
+    )
+  )
 })
 
 test('partialDeepStrictEqual, error, undefined property, non-enumerable', (t) => {

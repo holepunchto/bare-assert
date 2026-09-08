@@ -372,13 +372,13 @@ function deepStrictEqualShallow(actual, expected, actualType, expectedType, opts
     }
 
     if (isBoxedValue(actualPrototype) || isBoxedValue(expectedPrototype)) {
-      const actualValue = isBoxedValue(actualPrototype) ? actual.valueOf() : actual
-      const expectedValue = isBoxedValue(expectedPrototype) ? expected.valueOf() : expected
+      const actualValue = 'valueOf' in actual ? actual.valueOf() : actual
+      const expectedValue = 'valueOf' in expected ? expected.valueOf() : expected
 
-      return actualValue == expectedValue
+      if (!Object.is(actualValue, expectedValue)) return false
     }
   } else {
-    if (actualPrototype !== Object.getPrototypeOf(expected)) return false
+    if (actualPrototype !== expectedPrototype) return false
 
     if (isBoxedValue(actualPrototype)) {
       if (!Object.is(actual.valueOf(), expected.valueOf())) return false
@@ -432,16 +432,20 @@ function deepStrictEqualBuffer(actual, expected, opts) {
 }
 
 function deepStrictEqualError(actual, expected, opts) {
+  const { partial } = opts
+
+  if (partial === true) {
+    if (!('cause' in actual) && 'cause' in expected) return false
+  } else {
+    if ('cause' in actual !== 'cause' in expected) return false
+  }
+
   const keys = ['name', 'message', 'cause', 'errors']
 
   for (const key of keys) {
-    const hasActual = key in actual
-    const hasExpected = key in expected
-
-    if (key === 'cause' && !hasActual && hasExpected) return false
-
-    if (opts.partial === true && (expected[key] === undefined || expected[key] === '')) {
-      continue
+    if (partial === true) {
+      if (key === 'message' && expected[key] === '') continue
+      if (!(key in expected) || expected[key] === undefined) continue
     }
 
     if (!deepStrictEqualValue(actual[key], expected[key], opts)) return false
@@ -522,6 +526,8 @@ function deepStrictEqualMap(actual, expected, opts) {
     if (requiresDeepKeyMatch(key)) restActual.push({ key, value })
   }
 
+  if (!getAllKeys(restExpected).isSubsetOf(getAllKeys(restActual))) return false
+
   if (opts.partial === true) {
     return partialDeepStrictEqualArrayUnordered(restActual, restExpected, opts)
   } else {
@@ -545,6 +551,8 @@ function deepStrictEqualSet(actual, expected, opts) {
   for (const value of actual) {
     if (requiresDeepKeyMatch(value)) restActual.push(value)
   }
+
+  if (!getAllKeys(restExpected).isSubsetOf(getAllKeys(restActual))) return false
 
   if (opts.partial === true) {
     return partialDeepStrictEqualArrayUnordered(restActual, restExpected, opts)
@@ -634,6 +642,19 @@ function getEnumerableKeys(obj) {
   for (const symbolKey of Object.getOwnPropertySymbols(obj)) {
     const { enumerable } = Object.getOwnPropertyDescriptor(obj, symbolKey)
     if (enumerable) keys.push(symbolKey)
+  }
+
+  return keys
+}
+
+function getAllKeys(list) {
+  let keys = new Set()
+
+  for (const item of list) {
+    const type = getType(item)
+
+    if (type.isArray()) keys = new Set([...keys, ...Array.from(getAllKeys(item))])
+    if (type.isObject()) keys = new Set([...keys, ...getEnumerableKeys(item)])
   }
 
   return keys

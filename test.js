@@ -1448,6 +1448,33 @@ test('deepStrictEqual, recursive set', (t) => {
   t.execution(() => assert.deepStrictEqual(a, b))
 })
 
+test('deepStrictEqual, recursive array in set', (t) => {
+  const selfReferential = () => {
+    const list = []
+
+    list.push(list)
+
+    return list
+  }
+
+  t.execution(() =>
+    assert.deepStrictEqual(new Set([selfReferential()]), new Set([selfReferential()]))
+  )
+  t.execution(() =>
+    assert.deepStrictEqual(new Map([[selfReferential(), 1]]), new Map([[selfReferential(), 1]]))
+  )
+
+  t.execution(() => {
+    const a = []
+    const b = []
+
+    a.push(b)
+    b.push(a)
+
+    assert.deepStrictEqual(new Set([a]), new Set([b]))
+  })
+})
+
 // A comparison that throws part way through must not leave the pairs it was
 // walking behind, where a later comparison would mistake them for a cycle.
 test('deepStrictEqual, comparison state', (t) => {
@@ -1814,6 +1841,33 @@ test('partialDeepStrictEqual, boxed value', (t) => {
   t.execution(() => assert.partialDeepStrictEqual(new String('ab'), new String('ab')))
 })
 
+// Only a boxed value is compared through `valueOf`. A plain object that happens
+// to have one is still a plain object.
+test('partialDeepStrictEqual, boxed value, custom valueOf', (t) => {
+  t.exception(
+    () => assert.partialDeepStrictEqual({ valueOf: () => 0 }, new Number(0), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual({ valueOf: () => true }, new Boolean(true), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Number(0), { valueOf: () => 0 }, 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual({ valueOf: () => 'ab' }, new String('ab'), 'should fail'),
+    /should fail/
+  )
+
+  t.execution(() => {
+    const valueOf = () => 0
+
+    assert.partialDeepStrictEqual({ valueOf, foo: 1 }, { valueOf })
+  })
+})
+
 test('partialDeepStrictEqual, map', (t) => {
   const foo = new Map([
     [{ a: 1 }, 'value1'],
@@ -1970,8 +2024,30 @@ test('partialDeepStrictEqual, set, ambiguous members, minimal', (t) => {
 // members. A pair that cannot be matched is the worst case, because every
 // candidate ordering is tried before it gives up. Nine members is the point
 // where that becomes impossible to miss: Node answers in a millisecond, and
-// each further member multiplies the wait by the next integer.
+// each further member multiplies the wait by the next integer. Every member
+// here has the same shape, so no shortcut based on which key names appear can
+// rule the pair out up front.
 test('partialDeepStrictEqual, set, many object members', (t) => {
+  const actual = new Set()
+  const expected = new Set()
+
+  for (let i = 0; i < 9; i++) actual.add({ foo: i })
+  for (let i = 0; i < 8; i++) expected.add({ foo: i })
+
+  expected.add({ foo: 'unmatchable' })
+
+  const start = Date.now()
+
+  t.exception(() => assert.partialDeepStrictEqual(actual, expected, 'should fail'), /should fail/)
+
+  const elapsed = Date.now() - start
+
+  t.ok(elapsed < 200, `compared in ${elapsed}ms`)
+})
+
+// A member carrying a key name that appears nowhere in the actual set is the
+// one shape that can be ruled out without matching anything.
+test('partialDeepStrictEqual, set, many object members, disjoint keys', (t) => {
   const actual = new Set()
   const expected = new Set()
 
@@ -1987,6 +2063,74 @@ test('partialDeepStrictEqual, set, many object members', (t) => {
   const elapsed = Date.now() - start
 
   t.ok(elapsed < 200, `compared in ${elapsed}ms`)
+})
+
+// Map entries are matched the same way and cost the same, on their keys.
+test('partialDeepStrictEqual, map, many object keys', (t) => {
+  const actual = new Map()
+  const expected = new Map()
+
+  for (let i = 0; i < 7; i++) actual.set({ foo: 1, index: i }, 1)
+  for (let i = 0; i < 6; i++) expected.set({ foo: 1, other: i }, 1)
+
+  expected.set({ unmatchable: true }, 1)
+
+  const start = Date.now()
+
+  t.exception(() => assert.partialDeepStrictEqual(actual, expected, 'should fail'), /should fail/)
+
+  const elapsed = Date.now() - start
+
+  t.ok(elapsed < 200, `compared in ${elapsed}ms`)
+})
+
+// A member that refers to itself must not send the comparison down forever.
+test('partialDeepStrictEqual, set, recursive array member', (t) => {
+  const selfReferential = () => {
+    const list = []
+
+    list.push(list)
+
+    return list
+  }
+
+  const shared = selfReferential()
+
+  t.execution(() => assert.partialDeepStrictEqual(new Set([shared]), new Set([shared])))
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Set([selfReferential()]), new Set([selfReferential()]))
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Map([[selfReferential(), 1]]),
+      new Map([[selfReferential(), 1]])
+    )
+  )
+  t.execution(() => assert.partialDeepStrictEqual(selfReferential(), selfReferential()))
+})
+
+// A partial element match ignores position, so the indexes an expected array
+// carries need not be the indexes the actual one carries.
+test('partialDeepStrictEqual, set, sparse array member', (t) => {
+  const sparse = (index, value) => {
+    const list = []
+
+    list[index] = value
+
+    return list
+  }
+
+  t.execution(() => assert.partialDeepStrictEqual(new Set([sparse(1, 'x')]), new Set([['x']])))
+  t.execution(() => assert.partialDeepStrictEqual(new Set([sparse(2, 'x')]), new Set([['x']])))
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Map([[sparse(1, 'x'), 1]]), new Map([[['x'], 1]]))
+  )
+  t.execution(() => assert.partialDeepStrictEqual(new Set([['x', 'y']]), new Set([['y']])))
+
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Set([sparse(1, 'x')]), new Set([['y']]), 'should fail'),
+    /should fail/
+  )
 })
 
 test('partialDeepStrictEqual, sparse array', (t) => {

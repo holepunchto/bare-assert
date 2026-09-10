@@ -480,12 +480,12 @@ function partialDeepStrictEqualArrayUnordered(actual, expected, opts) {
   // Each row represent the results of an expected value, when all distinct rows and
   // columns have at least one positive value, it means that all expected values were match.
   function everyMatch(matrix) {
-    if (matrix.length === 1) return matrix[0].some((result) => result === true)
+    const firstRow = matrix[0]
 
-    const row = matrix[0]
+    if (matrix.length === 1) return firstRow.some((result) => result === true)
 
-    for (let i = 0; i < row.length; i++) {
-      if (row[i] === true) {
+    for (let i = 0; i < firstRow.length; i++) {
+      if (firstRow[i] === true) {
         if (everyMatch(cut(matrix, 0, i)) === true) return true
       }
     }

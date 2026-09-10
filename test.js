@@ -1,6 +1,5 @@
 const test = require('brittle')
 const assert = require('.')
-const permute = require('./lib/permutations')
 
 test('basic', (t) => {
   t.execution(() => assert(true))
@@ -3702,67 +3701,4 @@ test('AssertionError', (t) => {
 
   t.is(err.name, 'AssertionError')
   t.is(err.code, 'ASSERTION')
-})
-
-test('permutations', (t) => {
-  {
-    const permutations = permute([1])
-
-    t.alike(permutations.next().value, [1])
-
-    t.is(permutations.next().done, true)
-  }
-
-  {
-    const permutations = permute([1, 2])
-
-    t.alike(permutations.next().value, [1, 2])
-    t.alike(permutations.next().value, [2, 1])
-
-    t.is(permutations.next().done, true)
-  }
-
-  {
-    const permutations = permute([1, 2, 3])
-
-    t.alike(permutations.next().value, [1, 2, 3])
-    t.alike(permutations.next().value, [1, 3, 2])
-    t.alike(permutations.next().value, [3, 1, 2])
-    t.alike(permutations.next().value, [3, 2, 1])
-    t.alike(permutations.next().value, [2, 3, 1])
-    t.alike(permutations.next().value, [2, 1, 3])
-
-    t.is(permutations.next().done, true)
-  }
-
-  {
-    const permutations = permute([1, 2, 3, 4])
-
-    t.alike(permutations.next().value, [1, 2, 3, 4])
-    t.alike(permutations.next().value, [1, 2, 4, 3])
-    t.alike(permutations.next().value, [1, 4, 2, 3])
-    t.alike(permutations.next().value, [4, 1, 2, 3])
-    t.alike(permutations.next().value, [4, 1, 3, 2])
-    t.alike(permutations.next().value, [1, 4, 3, 2])
-    t.alike(permutations.next().value, [1, 3, 4, 2])
-    t.alike(permutations.next().value, [1, 3, 2, 4])
-    t.alike(permutations.next().value, [3, 1, 2, 4])
-    t.alike(permutations.next().value, [3, 1, 4, 2])
-    t.alike(permutations.next().value, [3, 4, 1, 2])
-    t.alike(permutations.next().value, [4, 3, 1, 2])
-    t.alike(permutations.next().value, [4, 3, 2, 1])
-    t.alike(permutations.next().value, [3, 4, 2, 1])
-    t.alike(permutations.next().value, [3, 2, 4, 1])
-    t.alike(permutations.next().value, [3, 2, 1, 4])
-    t.alike(permutations.next().value, [2, 3, 1, 4])
-    t.alike(permutations.next().value, [2, 3, 4, 1])
-    t.alike(permutations.next().value, [2, 4, 3, 1])
-    t.alike(permutations.next().value, [4, 2, 3, 1])
-    t.alike(permutations.next().value, [4, 2, 1, 3])
-    t.alike(permutations.next().value, [2, 4, 1, 3])
-    t.alike(permutations.next().value, [2, 1, 4, 3])
-    t.alike(permutations.next().value, [2, 1, 3, 4])
-
-    t.is(permutations.next().done, true)
-  }
 })

@@ -1,10 +1,9 @@
 const inspect = require('bare-inspect')
 const getType = require('bare-type')
-const Memoization = require('./lib/memoization')
-const permute = require('./lib/permutations')
+const CycleDetection = require('./lib/cycle-detection')
 
 function defaultDeepStrictOptions() {
-  return { partial: false, memo: new Memoization() }
+  return { partial: false, cycleDetection: new CycleDetection() }
 }
 
 class AssertionError extends Error {
@@ -280,14 +279,13 @@ exports.partialDeepStrictEqual = function partialDeepStrictEqual(actual, expecte
 }
 
 function deepStrictEqualValue(actual, expected, opts = defaultDeepStrictOptions()) {
-  const { partial, memo } = opts
+  const { partial, cycleDetection } = opts
 
   const actualType = getType(actual)
   const expectedType = getType(expected)
 
   if (!actualType.isObject() || !expectedType.isObject()) return Object.is(actual, expected)
-
-  if (actual === expected) return true
+  else if (actual === expected) return true
 
   // Anything that can be settled without descending into the values is settled
   // first. A pair that already differs in its own right is unequal whatever the
@@ -325,10 +323,10 @@ function deepStrictEqualValue(actual, expected, opts = defaultDeepStrictOptions(
     )
   }
 
-  if (memo.has(actual, expected)) {
-    return memo.compare(actual, expected)
+  if (cycleDetection.has(actual, expected)) {
+    return cycleDetection.compare(actual, expected)
   } else {
-    memo.add(actual, expected)
+    cycleDetection.add(actual, expected)
   }
 
   let result
@@ -344,7 +342,7 @@ function deepStrictEqualValue(actual, expected, opts = defaultDeepStrictOptions(
   else if (actualType.isSet()) result = deepStrictEqualSet(actual, expected, opts)
   else result = deepStrictEqualObject(actual, expected, opts)
 
-  memo.remove(actual, expected)
+  cycleDetection.remove(actual, expected)
 
   return result
 }
@@ -358,34 +356,26 @@ function deepStrictEqualShallow(actual, expected, actualType, expectedType, opts
   const expectedPrototype = Object.getPrototypeOf(expected)
 
   if (partial === true) {
+    if (Symbol.toStringTag in actual || Symbol.toStringTag in expected) {
+      if (actual[Symbol.toStringTag] !== expected[Symbol.toStringTag]) return false
+    }
+
     if (actualType.isDate() !== expectedType.isDate()) return false
     if (actualType.isRegExp() !== expectedType.isRegExp()) return false
     if (actualType.isError() !== expectedType.isError()) return false
     if (actualType.isArray() !== expectedType.isArray()) return false
     if (actualType.isArguments() !== expectedType.isArguments()) return false
 
-    if (
-      (Symbol.toStringTag in actual || Symbol.toStringTag in expected) &&
-      actual[Symbol.toStringTag] !== expected[Symbol.toStringTag]
-    ) {
-      return false
-    }
-
-    if (isBoxedValue(actualPrototype) || isBoxedValue(expectedPrototype)) {
-      const actualValue = 'valueOf' in actual ? actual.valueOf() : actual
-      const expectedValue = 'valueOf' in expected ? expected.valueOf() : expected
-
-      if (!Object.is(actualValue, expectedValue)) return false
-    }
+    if (isBoxedValue(actualPrototype) !== isBoxedValue(expectedPrototype)) return false
   } else {
     if (actualPrototype !== expectedPrototype) return false
-
-    if (isBoxedValue(actualPrototype)) {
-      if (!Object.is(actual.valueOf(), expected.valueOf())) return false
-    }
   }
 
-  if (actualType.isRegExp()) {
+  if (isBoxedValue(expectedPrototype)) {
+    if (!Object.is(actual.valueOf(), expected.valueOf())) return false
+  }
+
+  if (expectedType.isRegExp()) {
     if (
       actual.lastIndex !== expected.lastIndex ||
       actual.flags !== expected.flags ||
@@ -393,7 +383,7 @@ function deepStrictEqualShallow(actual, expected, actualType, expectedType, opts
     ) {
       return false
     }
-  } else if (actualType.isDate()) {
+  } else if (expectedType.isDate()) {
     if (!Object.is(actual.getTime(), expected.getTime())) return false
   }
 
@@ -478,19 +468,50 @@ function deepStrictEqualArrayUnordered(actual, expected, opts) {
 }
 
 function partialDeepStrictEqualArrayUnordered(actual, expected, opts) {
-  const permutations = permute(expected)
-
-  let next = permutations.next()
-
-  while (next.done !== true) {
-    if (deepStrictEqualArrayUnordered(actual.slice(), next.value, opts)) {
-      return true
-    }
-
-    next = permutations.next()
+  function cut(matrix, x, y) {
+    return matrix
+      .filter((_, i) => i !== x)
+      .map((row) => {
+        return row.filter((_, i) => i !== y)
+      })
   }
 
-  return false
+  // Recursive function to reduce a matrix of boolean results into a single boolean value.
+  // Each row represent the results of an expected value, when all distinct rows and
+  // columns have at least one positive value, it means that all expected values were match.
+  function everyMatch(matrix) {
+    if (matrix.length === 1) return matrix[0].some((result) => result === true)
+
+    const row = matrix[0]
+
+    for (let i = 0; i < row.length; i++) {
+      if (row[i] === true) {
+        if (everyMatch(cut(matrix, 0, i)) === true) return true
+      }
+    }
+
+    return false
+  }
+
+  const expectedLength = expected.length
+  const actualLength = actual.length
+
+  if (expectedLength === 0) return true
+
+  const matrix = new Array(expectedLength)
+  for (let i = 0; i < expectedLength; i++) matrix[i] = new Array(actualLength)
+
+  for (let i = 0; i < expectedLength; i++) {
+    const itemExpected = expected[i]
+
+    for (let j = 0; j < actualLength; j++) {
+      const itemActual = actual[j]
+
+      matrix[i][j] = deepStrictEqualValue(itemActual, itemExpected, opts)
+    }
+  }
+
+  return everyMatch(matrix)
 }
 
 // A key can be matched through a native `Map`/`Set` lookup only when it is a
@@ -526,8 +547,6 @@ function deepStrictEqualMap(actual, expected, opts) {
     if (requiresDeepKeyMatch(key)) restActual.push({ key, value })
   }
 
-  if (!getAllKeys(restExpected).isSubsetOf(getAllKeys(restActual))) return false
-
   if (opts.partial === true) {
     return partialDeepStrictEqualArrayUnordered(restActual, restExpected, opts)
   } else {
@@ -552,8 +571,6 @@ function deepStrictEqualSet(actual, expected, opts) {
     if (requiresDeepKeyMatch(value)) restActual.push(value)
   }
 
-  if (!getAllKeys(restExpected).isSubsetOf(getAllKeys(restActual))) return false
-
   if (opts.partial === true) {
     return partialDeepStrictEqualArrayUnordered(restActual, restExpected, opts)
   } else {
@@ -572,9 +589,8 @@ function deepStrictEqualObject(actual, expected, opts, ignoreList = []) {
     // Skip already compared keys
     if (hasIgnoreList && ignoreList.includes(key)) continue
 
-    if (!actualKeys.includes(key) || !deepStrictEqualValue(actual[key], expected[key], opts)) {
-      return false
-    }
+    if (!actualKeys.includes(key)) return false
+    if (!deepStrictEqualValue(actual[key], expected[key], opts)) return false
   }
 
   return true
@@ -627,12 +643,19 @@ function partialDeepStrictEqualBuffer(actual, expected) {
 }
 
 function isBoxedValue(prototype) {
+  if (typeof prototype !== 'object' || prototype === null) return false
+
   return (
     prototype === BigInt.prototype ||
+    prototype.__proto__ === BigInt.prototype ||
     prototype === Boolean.prototype ||
+    prototype.__proto__ === Boolean.prototype ||
     prototype === Number.prototype ||
+    prototype.__proto__ === Number.prototype ||
     prototype === String.prototype ||
-    prototype === Symbol.prototype
+    prototype.__proto__ === String.prototype ||
+    prototype === Symbol.prototype ||
+    prototype.__proto__ === Symbol.prototype
   )
 }
 
@@ -642,22 +665,6 @@ function getEnumerableKeys(obj) {
   for (const symbolKey of Object.getOwnPropertySymbols(obj)) {
     const { enumerable } = Object.getOwnPropertyDescriptor(obj, symbolKey)
     if (enumerable) keys.push(symbolKey)
-  }
-
-  return keys
-}
-
-function getAllKeys(list) {
-  let keys = new Set()
-
-  for (const item of list) {
-    if (Array.isArray(item)) {
-      keys = new Set([...keys, ...Array.from(getAllKeys(item))])
-    }
-
-    if (typeof item === 'object' && item !== null) {
-      keys = new Set([...keys, ...getEnumerableKeys(item)])
-    }
   }
 
   return keys

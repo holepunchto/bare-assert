@@ -721,6 +721,22 @@ test('deepStrictEqual, boxed value vs primitive', (t) => {
   t.exception(() => assert.deepStrictEqual(new Number(1), 1, 'should fail'), /should fail/)
 })
 
+// Inheriting from `Number.prototype` does not make a value a boxed number, and
+// `valueOf` cannot be called on one that is not.
+test('deepStrictEqual, boxed value, without internal slot', (t) => {
+  t.execution(() =>
+    assert.deepStrictEqual(Object.create(Number.prototype), Object.create(Number.prototype))
+  )
+  t.execution(() =>
+    assert.deepStrictEqual(Object.create(String.prototype), Object.create(String.prototype))
+  )
+
+  t.exception.all(
+    () => assert.deepStrictEqual(Object.create(Number.prototype), new Number(1), 'should fail'),
+    /should fail/
+  )
+})
+
 test('deepStrictEqual, date', (t) => {
   t.execution(() => assert.deepStrictEqual(new Date(2000, 3, 14), new Date(2000, 3, 14)))
   t.exception(
@@ -1867,6 +1883,70 @@ test('partialDeepStrictEqual, boxed value, custom valueOf', (t) => {
   })
 })
 
+test('partialDeepStrictEqual, boxed value, without internal slot', (t) => {
+  t.execution(() =>
+    assert.partialDeepStrictEqual(Object.create(Number.prototype), Object.create(Number.prototype))
+  )
+
+  t.exception.all(
+    () =>
+      assert.partialDeepStrictEqual(Object.create(Number.prototype), new Number(1), 'should fail'),
+    /should fail/
+  )
+  t.exception.all(
+    () =>
+      assert.partialDeepStrictEqual(new Number(1), Object.create(Number.prototype), 'should fail'),
+    /should fail/
+  )
+  t.exception.all(
+    () =>
+      assert.partialDeepStrictEqual(Object.create(String.prototype), new String(''), 'should fail'),
+    /should fail/
+  )
+  t.exception.all(
+    () =>
+      assert.partialDeepStrictEqual(
+        Object.create(Boolean.prototype),
+        new Boolean(false),
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception.all(
+    () =>
+      assert.partialDeepStrictEqual(
+        { foo: Object.create(Number.prototype) },
+        { foo: new Number(1) },
+        'should fail'
+      ),
+    /should fail/
+  )
+})
+
+// A boxed value stays one however far it is subclassed.
+test('partialDeepStrictEqual, boxed value, subclass', (t) => {
+  class Direct extends Number {}
+
+  class Middle extends Number {}
+
+  class Indirect extends Middle {}
+
+  t.execution(() => assert.partialDeepStrictEqual(new Direct(1), new Number(1)))
+  t.execution(() => assert.partialDeepStrictEqual(new Number(1), new Direct(1)))
+  t.execution(() => assert.partialDeepStrictEqual(new Indirect(1), new Number(1)))
+  t.execution(() => assert.partialDeepStrictEqual(new Number(1), new Indirect(1)))
+  t.execution(() => assert.partialDeepStrictEqual(new Indirect(1), new Direct(1)))
+
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Direct(1), new Number(2), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Indirect(1), new Number(2), 'should fail'),
+    /should fail/
+  )
+})
+
 test('partialDeepStrictEqual, map', (t) => {
   const foo = new Map([
     [{ a: 1 }, 'value1'],
@@ -2054,6 +2134,27 @@ test('partialDeepStrictEqual, set, many object members, disjoint keys', (t) => {
   for (let i = 0; i < 8; i++) expected.add({ foo: 1, other: i })
 
   expected.add({ unmatchable: true })
+
+  const start = Date.now()
+
+  t.exception(() => assert.partialDeepStrictEqual(actual, expected, 'should fail'), /should fail/)
+
+  const elapsed = Date.now() - start
+
+  t.ok(elapsed < 200, `compared in ${elapsed}ms`)
+})
+
+// Members that all match one another leave nothing to narrow the search by, so
+// only a matching that remembers the pairings it has already ruled out stays
+// affordable. Every further member multiplies the wait by the next integer.
+test('partialDeepStrictEqual, set, many matching object members', (t) => {
+  const actual = new Set()
+  const expected = new Set()
+
+  for (let i = 0; i < 11; i++) actual.add({ foo: 1 })
+  for (let i = 0; i < 10; i++) expected.add({ foo: 1 })
+
+  expected.add({ bar: 1 })
 
   const start = Date.now()
 

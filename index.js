@@ -352,9 +352,6 @@ function deepStrictEqualValue(actual, expected, opts = defaultDeepStrictOptions(
 function deepStrictEqualShallow(actual, expected, actualType, expectedType, opts) {
   const { partial } = opts
 
-  const actualPrototype = Object.getPrototypeOf(actual)
-  const expectedPrototype = Object.getPrototypeOf(expected)
-
   if (partial === true) {
     if (Symbol.toStringTag in actual || Symbol.toStringTag in expected) {
       if (actual[Symbol.toStringTag] !== expected[Symbol.toStringTag]) return false
@@ -366,13 +363,18 @@ function deepStrictEqualShallow(actual, expected, actualType, expectedType, opts
     if (actualType.isArray() !== expectedType.isArray()) return false
     if (actualType.isArguments() !== expectedType.isArguments()) return false
 
-    if (isBoxedValue(actualPrototype) !== isBoxedValue(expectedPrototype)) return false
+    if (isBoxedValue(actual) !== isBoxedValue(expected)) return false
   } else {
-    if (actualPrototype !== expectedPrototype) return false
+    if (Object.getPrototypeOf(actual) !== Object.getPrototypeOf(expected)) return false
   }
 
-  if (isBoxedValue(expectedPrototype)) {
-    if (!Object.is(actual.valueOf(), expected.valueOf())) return false
+  if (isBoxedValue(expected)) {
+    const [actualErrored, actualValue] = safeValeuOf(actual)
+    const [expectedErrored, expectedValue] = safeValeuOf(expected)
+
+    if (actualErrored !== expectedErrored) return false
+
+    if (!Object.is(actualValue, expectedValue)) return false
   }
 
   if (expectedType.isRegExp()) {
@@ -468,25 +470,23 @@ function deepStrictEqualArrayUnordered(actual, expected, opts) {
 }
 
 function partialDeepStrictEqualArrayUnordered(actual, expected, opts) {
-  function cut(matrix, x, y) {
-    return matrix
-      .filter((_, i) => i !== x)
-      .map((row) => {
-        return row.filter((_, i) => i !== y)
-      })
-  }
+  // https://en.wikipedia.org/wiki/Permutation_matrix
+  function containsPermutationMatrix(matrix, columns = []) {
+    const [firstRow, ...otherRows] = matrix
 
-  // Recursive function to reduce a matrix of boolean results into a single boolean value.
-  // Each row represent the results of an expected value, when all distinct rows and
-  // columns have at least one positive value, it means that all expected values were match.
-  function everyMatch(matrix) {
-    const firstRow = matrix[0]
-
-    if (matrix.length === 1) return firstRow.some((result) => result === true)
+    if (otherRows.length === 0) {
+      return firstRow.some((result, i) => !columns.includes(i) && result === true)
+    }
 
     for (let i = 0; i < firstRow.length; i++) {
+      if (columns.includes(i)) continue
+
       if (firstRow[i] === true) {
-        if (everyMatch(cut(matrix, 0, i)) === true) return true
+        columns.push(i)
+
+        if (containsPermutationMatrix(otherRows, columns) === true) return true
+
+        columns.pop()
       }
     }
 
@@ -504,14 +504,22 @@ function partialDeepStrictEqualArrayUnordered(actual, expected, opts) {
   for (let i = 0; i < expectedLength; i++) {
     const itemExpected = expected[i]
 
+    let found = false
+
     for (let j = 0; j < actualLength; j++) {
       const itemActual = actual[j]
 
-      matrix[i][j] = deepStrictEqualValue(itemActual, itemExpected, opts)
+      const result = deepStrictEqualValue(itemActual, itemExpected, opts)
+
+      matrix[i][j] = result
+
+      if (result) found = true
     }
+
+    if (found === false) return false
   }
 
-  return everyMatch(matrix)
+  return containsPermutationMatrix(matrix)
 }
 
 // A key can be matched through a native `Map`/`Set` lookup only when it is a
@@ -642,20 +650,13 @@ function partialDeepStrictEqualBuffer(actual, expected) {
   return true
 }
 
-function isBoxedValue(prototype) {
-  if (typeof prototype !== 'object' || prototype === null) return false
-
+function isBoxedValue(value) {
   return (
-    prototype === BigInt.prototype ||
-    prototype.__proto__ === BigInt.prototype ||
-    prototype === Boolean.prototype ||
-    prototype.__proto__ === Boolean.prototype ||
-    prototype === Number.prototype ||
-    prototype.__proto__ === Number.prototype ||
-    prototype === String.prototype ||
-    prototype.__proto__ === String.prototype ||
-    prototype === Symbol.prototype ||
-    prototype.__proto__ === Symbol.prototype
+    value instanceof BigInt ||
+    value instanceof Boolean ||
+    value instanceof Number ||
+    value instanceof String ||
+    value instanceof Symbol
   )
 }
 
@@ -668,4 +669,17 @@ function getEnumerableKeys(obj) {
   }
 
   return keys
+}
+
+function safeValeuOf(obj) {
+  let errored = false
+  let value = undefined
+
+  try {
+    value = obj.valueOf()
+  } catch {
+    errored = true
+  }
+
+  return [errored, value]
 }

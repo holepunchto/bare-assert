@@ -362,19 +362,14 @@ function deepStrictEqualShallow(actual, expected, actualType, expectedType, opts
     if (actualType.isError() !== expectedType.isError()) return false
     if (actualType.isArray() !== expectedType.isArray()) return false
     if (actualType.isArguments() !== expectedType.isArguments()) return false
-
-    if (isBoxedValue(actual) !== isBoxedValue(expected)) return false
   } else {
     if (Object.getPrototypeOf(actual) !== Object.getPrototypeOf(expected)) return false
   }
 
+  if (isBoxedValue(actual) !== isBoxedValue(expected)) return false
+
   if (isBoxedValue(expected)) {
-    const [actualErrored, actualValue] = safeValeuOf(actual)
-    const [expectedErrored, expectedValue] = safeValeuOf(expected)
-
-    if (actualErrored !== expectedErrored) return false
-
-    if (!Object.is(actualValue, expectedValue)) return false
+    if (!Object.is(actual.valueOf(), expected.valueOf())) return false
   }
 
   if (expectedType.isRegExp()) {
@@ -493,6 +488,50 @@ function partialDeepStrictEqualArrayUnordered(actual, expected, opts) {
     return false
   }
 
+  function countNegativeColumns(matrix) {
+    let count = 0
+
+    const rowsLength = matrix.length
+    const columnsLength = matrix[0].length
+
+    for (let i = 0; i < columnsLength; i++) {
+      let negativeColumns = true
+
+      for (let j = 0; j < rowsLength; j++) {
+        if (matrix[j][i] === true) {
+          negativeColumns = false
+
+          break
+        }
+      }
+
+      if (negativeColumns === true) count++
+    }
+
+    return count
+  }
+
+  function containsNegativeRow(matrix) {
+    const rowsLength = matrix.length
+    const columnsLength = matrix[0].length
+
+    for (let i = 0; i < rowsLength; i++) {
+      let negativeRow = true
+
+      for (let j = 0; j < columnsLength; j++) {
+        if (matrix[i][j] === true) {
+          negativeRow = false
+
+          break
+        }
+      }
+
+      if (negativeRow === true) return true
+    }
+
+    return false
+  }
+
   const expectedLength = expected.length
   const actualLength = actual.length
 
@@ -504,20 +543,16 @@ function partialDeepStrictEqualArrayUnordered(actual, expected, opts) {
   for (let i = 0; i < expectedLength; i++) {
     const itemExpected = expected[i]
 
-    let found = false
-
     for (let j = 0; j < actualLength; j++) {
       const itemActual = actual[j]
 
-      const result = deepStrictEqualValue(itemActual, itemExpected, opts)
-
-      matrix[i][j] = result
-
-      if (result) found = true
+      matrix[i][j] = deepStrictEqualValue(itemActual, itemExpected, opts)
     }
-
-    if (found === false) return false
   }
+
+  if (containsNegativeRow(matrix)) return false
+
+  if (actualLength - countNegativeColumns(matrix) < expectedLength) return false
 
   return containsPermutationMatrix(matrix)
 }
@@ -651,12 +686,16 @@ function partialDeepStrictEqualBuffer(actual, expected) {
 }
 
 function isBoxedValue(value) {
+  if (typeof value !== 'object' || value === null) return false
+
+  const signature = Object.prototype.toString.call(value)
+
   return (
-    value instanceof BigInt ||
-    value instanceof Boolean ||
-    value instanceof Number ||
-    value instanceof String ||
-    value instanceof Symbol
+    signature === '[object BigInt]' ||
+    signature === '[object Boolean]' ||
+    signature === '[object Number]' ||
+    signature === '[object String]' ||
+    signature === '[object Symbol]'
   )
 }
 
@@ -669,17 +708,4 @@ function getEnumerableKeys(obj) {
   }
 
   return keys
-}
-
-function safeValeuOf(obj) {
-  let errored = false
-  let value = undefined
-
-  try {
-    value = obj.valueOf()
-  } catch {
-    errored = true
-  }
-
-  return [errored, value]
 }

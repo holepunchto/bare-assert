@@ -737,6 +737,21 @@ test('deepStrictEqual, boxed value, without internal slot', (t) => {
   )
 })
 
+// `Object.prototype.toString` reports whatever `Symbol.toStringTag` says, so
+// the tag alone does not make a value a boxed one either.
+test('deepStrictEqual, boxed value, forged tag', (t) => {
+  const tagged = (tag) => ({ [Symbol.toStringTag]: tag })
+
+  t.execution(() => assert.deepStrictEqual(tagged('Number'), tagged('Number')))
+  t.execution(() => assert.deepStrictEqual(tagged('String'), tagged('String')))
+  t.execution(() => assert.deepStrictEqual(tagged('Object'), tagged('Object')))
+
+  t.exception(
+    () => assert.deepStrictEqual(tagged('Number'), tagged('String'), 'should fail'),
+    /should fail/
+  )
+})
+
 test('deepStrictEqual, date', (t) => {
   t.execution(() => assert.deepStrictEqual(new Date(2000, 3, 14), new Date(2000, 3, 14)))
   t.exception(
@@ -1967,6 +1982,37 @@ test('partialDeepStrictEqual, boxed value, borrowed prototype', (t) => {
   t.execution(() => assert.partialDeepStrictEqual(new Number(1), new Number(1)))
 })
 
+test('partialDeepStrictEqual, boxed value, forged tag', (t) => {
+  const tagged = (tag, properties = {}) => ({ [Symbol.toStringTag]: tag, ...properties })
+
+  t.execution(() => assert.partialDeepStrictEqual(tagged('Number'), tagged('Number')))
+  t.execution(() => assert.partialDeepStrictEqual(tagged('String'), tagged('String')))
+  t.execution(() => assert.partialDeepStrictEqual(tagged('Boolean'), tagged('Boolean')))
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      tagged('Number', { foo: 1, bar: 2 }),
+      tagged('Number', { foo: 1 })
+    )
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual({ foo: tagged('Number') }, { foo: tagged('Number') })
+  )
+  t.execution(() =>
+    assert.partialDeepStrictEqual(new Set([tagged('Number')]), new Set([tagged('Number')]))
+  )
+  t.execution(() => assert.partialDeepStrictEqual(tagged('Object'), tagged('Object')))
+  t.execution(() => assert.partialDeepStrictEqual(tagged('Custom'), tagged('Custom')))
+
+  t.exception(
+    () => assert.partialDeepStrictEqual(tagged('Number'), new Number(1), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Number(1), tagged('Number'), 'should fail'),
+    /should fail/
+  )
+})
+
 // A boxed value stays one however far it is subclassed.
 test('partialDeepStrictEqual, boxed value, subclass', (t) => {
   class Direct extends Number {}
@@ -2241,6 +2287,31 @@ test('partialDeepStrictEqual, set, more members than candidates', (t) => {
   actual.add({ bar: 1 })
 
   for (let i = 0; i < 11; i++) expected.add({ foo: 1 })
+
+  const start = Date.now()
+
+  t.exception(() => assert.partialDeepStrictEqual(actual, expected, 'should fail'), /should fail/)
+
+  const elapsed = Date.now() - start
+
+  t.ok(elapsed < 200, `compared in ${elapsed}ms`)
+})
+
+// Counting members against candidates settles the case where the shortfall is
+// visible across the whole pair. Here it is not: every member matches
+// something, every candidate is wanted by someone, and only three of the
+// members compete over the same two candidates. Deciding that is the matching's
+// job, and the members that match anything come first, so each attempt reaches
+// the conflict last.
+test('partialDeepStrictEqual, set, more members than candidates, in part', (t) => {
+  const actual = new Set()
+  const expected = new Set()
+
+  for (let i = 0; i < 2; i++) actual.add({ foo: 1 })
+  for (let i = 0; i < 9; i++) actual.add({ bar: 1 })
+
+  for (let i = 0; i < 8; i++) expected.add({})
+  for (let i = 0; i < 3; i++) expected.add({ foo: 1 })
 
   const start = Date.now()
 

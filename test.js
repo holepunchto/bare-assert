@@ -1923,6 +1923,50 @@ test('partialDeepStrictEqual, boxed value, without internal slot', (t) => {
   )
 })
 
+// Inheriting from a box prototype is not what makes a value boxed, so supplying
+// the `valueOf` the prototype cannot serve does not make one either.
+test('partialDeepStrictEqual, boxed value, borrowed prototype', (t) => {
+  const borrow = (prototype, value) => {
+    const borrowed = Object.create(prototype)
+
+    borrowed.valueOf = () => value
+
+    return borrowed
+  }
+
+  t.exception(
+    () => assert.partialDeepStrictEqual(borrow(Number.prototype, 1), new Number(1), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(borrow(String.prototype, ''), new String(''), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        { foo: borrow(Number.prototype, 1) },
+        { foo: new Number(1) },
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception(() => {
+    const borrowed = { valueOf: () => 1 }
+
+    Object.setPrototypeOf(borrowed, Number.prototype)
+
+    assert.partialDeepStrictEqual(borrowed, new Number(1), 'should fail')
+  }, /should fail/)
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Number(1), borrow(Number.prototype, 1), 'should fail'),
+    /should fail/
+  )
+
+  t.execution(() => assert.partialDeepStrictEqual(new Number(1), new Number(1)))
+})
+
 // A boxed value stays one however far it is subclassed.
 test('partialDeepStrictEqual, boxed value, subclass', (t) => {
   class Direct extends Number {}
@@ -2174,6 +2218,29 @@ test('partialDeepStrictEqual, map, many object keys', (t) => {
   for (let i = 0; i < 6; i++) expected.set({ foo: 1, other: i }, 1)
 
   expected.set({ unmatchable: true }, 1)
+
+  const start = Date.now()
+
+  t.exception(() => assert.partialDeepStrictEqual(actual, expected, 'should fail'), /should fail/)
+
+  const elapsed = Date.now() - start
+
+  t.ok(elapsed < 200, `compared in ${elapsed}ms`)
+})
+
+// Noticing that one member matches nothing is easy. The cost lives in the pairs
+// where every member matches something and the members still cannot all be
+// matched at once, which is what a matching has to decide. Here eleven members
+// compete for ten candidates.
+test('partialDeepStrictEqual, set, more members than candidates', (t) => {
+  const actual = new Set()
+  const expected = new Set()
+
+  for (let i = 0; i < 10; i++) actual.add({ foo: 1 })
+
+  actual.add({ bar: 1 })
+
+  for (let i = 0; i < 11; i++) expected.add({ foo: 1 })
 
   const start = Date.now()
 

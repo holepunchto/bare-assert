@@ -468,7 +468,7 @@ function partialDeepStrictEqualArrayUnordered(actual, expected, opts) {
   function byWeight(rowA, rowB) {
     function getWeight(row) {
       return row.reduce((accumulator, currentValue, currentIndex) => {
-        return currentValue === true ? accumulator + currentIndex : accumulator
+        return currentValue === true ? accumulator + (currentIndex + 1) : accumulator
       }, 0)
     }
 
@@ -539,9 +539,11 @@ function partialDeepStrictEqualArrayUnordered(actual, expected, opts) {
     }
   }
 
-  if (actualLength - countNegativeColumns(matrix) < expectedLength) return false
+  if (actualLength > 5 && expectedLength > 5) {
+    if (actualLength - countNegativeColumns(matrix) < expectedLength) return false
 
-  matrix.sort(byWeight)
+    matrix.sort(byWeight)
+  }
 
   return containsPermutationMatrix(matrix)
 }
@@ -675,6 +677,18 @@ function partialDeepStrictEqualBuffer(actual, expected) {
 }
 
 function isBoxedValue(value) {
+  const signature = Object.prototype.toString.call(value)
+
+  if (
+    signature !== '[object BigInt]' &&
+    signature !== '[object Boolean]' &&
+    signature !== '[object Number]' &&
+    signature !== '[object String]' &&
+    signature !== '[object Symbol]'
+  ) {
+    return false
+  }
+
   try {
     value.valueOf()
   } catch {
@@ -683,14 +697,12 @@ function isBoxedValue(value) {
 
   if (Object.hasOwn(value, 'valueOf')) return false
 
-  const signature = Object.prototype.toString.call(value)
-
   return (
-    (value instanceof BigInt && signature === '[object BigInt]') ||
-    (value instanceof Boolean && signature === '[object Boolean]') ||
-    (value instanceof Number && signature === '[object Number]') ||
-    (value instanceof String && signature === '[object String]') ||
-    (value instanceof Symbol && signature === '[object Symbol]')
+    value instanceof BigInt ||
+    value instanceof Boolean ||
+    value instanceof Number ||
+    value instanceof String ||
+    value instanceof Symbol
   )
 }
 

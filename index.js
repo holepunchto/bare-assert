@@ -467,7 +467,9 @@ function deepStrictEqualArrayUnordered(actual, expected, opts) {
 function partialDeepStrictEqualArrayUnordered(actual, expected, opts) {
   function byWeight(rowA, rowB) {
     function getWeight(row) {
-      return row.filter(Boolean).length
+      return row.reduce((accumulator, currentValue, currentIndex) => {
+        return currentValue === true ? accumulator + currentIndex : accumulator
+      }, 0)
     }
 
     return getWeight(rowA) - getWeight(rowB)
@@ -539,7 +541,9 @@ function partialDeepStrictEqualArrayUnordered(actual, expected, opts) {
 
   if (actualLength - countNegativeColumns(matrix) < expectedLength) return false
 
-  return containsPermutationMatrix(matrix.sort(byWeight))
+  matrix.sort(byWeight)
+
+  return containsPermutationMatrix(matrix)
 }
 
 // A key can be matched through a native `Map`/`Set` lookup only when it is a
@@ -671,6 +675,14 @@ function partialDeepStrictEqualBuffer(actual, expected) {
 }
 
 function isBoxedValue(value) {
+  try {
+    value.valueOf()
+  } catch {
+    return false
+  }
+
+  if (Object.hasOwn(value, 'valueOf')) return false
+
   const signature = Object.prototype.toString.call(value)
 
   return (

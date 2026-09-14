@@ -752,6 +752,20 @@ test('deepStrictEqual, boxed value, forged tag', (t) => {
   )
 })
 
+// Inheriting the prototype and carrying the tag still leaves the value without
+// the state a boxed number keeps, which is the only thing `valueOf` can read.
+test('deepStrictEqual, boxed value, borrowed prototype and tag', (t) => {
+  const borrowed = () => {
+    const value = Object.create(Number.prototype)
+
+    value[Symbol.toStringTag] = 'Number'
+
+    return value
+  }
+
+  t.execution(() => assert.deepStrictEqual(borrowed(), borrowed()))
+})
+
 test('deepStrictEqual, date', (t) => {
   t.execution(() => assert.deepStrictEqual(new Date(2000, 3, 14), new Date(2000, 3, 14)))
   t.exception(
@@ -2013,6 +2027,48 @@ test('partialDeepStrictEqual, boxed value, forged tag', (t) => {
   )
 })
 
+test('partialDeepStrictEqual, boxed value, borrowed prototype and tag', (t) => {
+  const borrowed = (properties = {}) => {
+    const value = Object.create(Number.prototype)
+
+    value[Symbol.toStringTag] = 'Number'
+
+    return Object.assign(value, properties)
+  }
+
+  const boxed = (number) => Object.assign(new Number(number), { [Symbol.toStringTag]: 'Number' })
+
+  t.execution(() => assert.partialDeepStrictEqual(borrowed(), borrowed()))
+
+  t.exception.all(
+    () => assert.partialDeepStrictEqual(borrowed(), boxed(1), 'should fail'),
+    /should fail/
+  )
+  t.exception.all(
+    () => assert.partialDeepStrictEqual(boxed(1), borrowed(), 'should fail'),
+    /should fail/
+  )
+  t.exception.all(
+    () => assert.partialDeepStrictEqual({ foo: borrowed() }, { foo: boxed(1) }, 'should fail'),
+    /should fail/
+  )
+  t.exception.all(
+    () => assert.partialDeepStrictEqual(borrowed({ valueOf: () => 1 }), boxed(1), 'should fail'),
+    /should fail/
+  )
+
+  t.execution(() => assert.partialDeepStrictEqual(boxed(1), boxed(1)))
+  t.execution(() => {
+    class Subclass extends Number {}
+
+    const subclassed = new Subclass(1)
+
+    subclassed[Symbol.toStringTag] = 'Number'
+
+    assert.partialDeepStrictEqual(subclassed, boxed(1))
+  })
+})
+
 // A boxed value stays one however far it is subclassed.
 test('partialDeepStrictEqual, boxed value, subclass', (t) => {
   class Direct extends Number {}
@@ -2312,6 +2368,41 @@ test('partialDeepStrictEqual, set, more members than candidates, in part', (t) =
 
   for (let i = 0; i < 8; i++) expected.add({})
   for (let i = 0; i < 3; i++) expected.add({ foo: 1 })
+
+  const start = Date.now()
+
+  t.exception(() => assert.partialDeepStrictEqual(actual, expected, 'should fail'), /should fail/)
+
+  const elapsed = Date.now() - start
+
+  t.ok(elapsed < 200, `compared in ${elapsed}ms`)
+})
+
+// Here every member matches exactly six candidates, so taking the most
+// constrained member first cannot tell them apart either, and every candidate
+// is wanted by someone. The shortfall is still confined to the seven members
+// that share the same six candidates.
+test('partialDeepStrictEqual, set, more members than candidates, same weight', (t) => {
+  const width = 6
+  const spread = 6
+  const spreadCandidates = spread + 1
+
+  const candidates = []
+
+  for (let i = 0; i < width; i++) candidates.push({ shared: 1 })
+  for (let i = 0; i < spreadCandidates; i++) candidates.push({})
+
+  for (let i = 0; i < spread; i++) {
+    for (let j = 0; j < width; j++) {
+      candidates[width + ((i + j) % spreadCandidates)]['spread' + i] = 1
+    }
+  }
+
+  const actual = new Set(candidates)
+  const expected = new Set()
+
+  for (let i = 0; i < spread; i++) expected.add({ ['spread' + i]: 1 })
+  for (let i = 0; i <= width; i++) expected.add({ shared: 1 })
 
   const start = Date.now()
 

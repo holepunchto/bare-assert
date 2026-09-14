@@ -465,6 +465,14 @@ function deepStrictEqualArrayUnordered(actual, expected, opts) {
 }
 
 function partialDeepStrictEqualArrayUnordered(actual, expected, opts) {
+  function byWeight(rowA, rowB) {
+    function getWeight(row) {
+      return row.filter(Boolean).length
+    }
+
+    return getWeight(rowA) - getWeight(rowB)
+  }
+
   // https://en.wikipedia.org/wiki/Permutation_matrix
   function containsPermutationMatrix(matrix, columns = []) {
     const [firstRow, ...otherRows] = matrix
@@ -511,27 +519,6 @@ function partialDeepStrictEqualArrayUnordered(actual, expected, opts) {
     return count
   }
 
-  function containsNegativeRow(matrix) {
-    const rowsLength = matrix.length
-    const columnsLength = matrix[0].length
-
-    for (let i = 0; i < rowsLength; i++) {
-      let negativeRow = true
-
-      for (let j = 0; j < columnsLength; j++) {
-        if (matrix[i][j] === true) {
-          negativeRow = false
-
-          break
-        }
-      }
-
-      if (negativeRow === true) return true
-    }
-
-    return false
-  }
-
   const expectedLength = expected.length
   const actualLength = actual.length
 
@@ -550,11 +537,9 @@ function partialDeepStrictEqualArrayUnordered(actual, expected, opts) {
     }
   }
 
-  if (containsNegativeRow(matrix)) return false
-
   if (actualLength - countNegativeColumns(matrix) < expectedLength) return false
 
-  return containsPermutationMatrix(matrix)
+  return containsPermutationMatrix(matrix.sort(byWeight))
 }
 
 // A key can be matched through a native `Map`/`Set` lookup only when it is a
@@ -686,16 +671,14 @@ function partialDeepStrictEqualBuffer(actual, expected) {
 }
 
 function isBoxedValue(value) {
-  if (typeof value !== 'object' || value === null) return false
-
   const signature = Object.prototype.toString.call(value)
 
   return (
-    signature === '[object BigInt]' ||
-    signature === '[object Boolean]' ||
-    signature === '[object Number]' ||
-    signature === '[object String]' ||
-    signature === '[object Symbol]'
+    (value instanceof BigInt && signature === '[object BigInt]') ||
+    (value instanceof Boolean && signature === '[object Boolean]') ||
+    (value instanceof Number && signature === '[object Number]') ||
+    (value instanceof String && signature === '[object String]') ||
+    (value instanceof Symbol && signature === '[object Symbol]')
   )
 }
 

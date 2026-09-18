@@ -1,5 +1,6 @@
 const test = require('brittle')
 const assert = require('.')
+const hopcroftKarp = require('./lib/hopcroft-karp')
 
 test('basic', (t) => {
   t.execution(() => assert(true))
@@ -4031,4 +4032,17 @@ test('AssertionError', (t) => {
 
   t.is(err.name, 'AssertionError')
   t.is(err.code, 'ASSERTION')
+})
+
+test('Hopcroft-karp', (t) => {
+  t.is(
+    hopcroftKarp([
+      [0, 1],
+      [0, 4],
+      [2, 3],
+      [0, 4],
+      [1, 3]
+    ]),
+    true
+  )
 })

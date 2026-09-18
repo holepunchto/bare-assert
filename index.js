@@ -1,6 +1,7 @@
 const inspect = require('bare-inspect')
 const getType = require('bare-type')
 const CycleDetection = require('./lib/cycle-detection')
+const hopcroftKarp = require('./lib/hopcroft-karp')
 
 function defaultDeepStrictOptions() {
   return { partial: false, cycleDetection: new CycleDetection() }
@@ -465,87 +466,30 @@ function deepStrictEqualArrayUnordered(actual, expected, opts) {
 }
 
 function partialDeepStrictEqualArrayUnordered(actual, expected, opts) {
-  function byWeight(rowA, rowB) {
-    function getWeight(row) {
-      return row.reduce((accumulator, currentValue, currentIndex) => {
-        return currentValue === true ? accumulator + (currentIndex + 1) : accumulator
-      }, 0)
-    }
+  if (expected.length === 0) return true
 
-    return getWeight(rowA) - getWeight(rowB)
-  }
+  const graph = new Array(expected.length)
 
-  // https://en.wikipedia.org/wiki/Permutation_matrix
-  function containsPermutationMatrix(matrix, columns = []) {
-    const [firstRow, ...otherRows] = matrix
+  for (let i = 0; i < expected.length; i++) {
+    let found = false
+    graph[i] = []
 
-    if (otherRows.length === 0) {
-      return firstRow.some((result, i) => !columns.includes(i) && result === true)
-    }
-
-    for (let i = 0; i < firstRow.length; i++) {
-      if (columns.includes(i)) continue
-
-      if (firstRow[i] === true) {
-        columns.push(i)
-
-        if (containsPermutationMatrix(otherRows, columns) === true) return true
-
-        columns.pop()
-      }
-    }
-
-    return false
-  }
-
-  function countNegativeColumns(matrix) {
-    let count = 0
-
-    const rowsLength = matrix.length
-    const columnsLength = matrix[0].length
-
-    for (let i = 0; i < columnsLength; i++) {
-      let negativeColumns = true
-
-      for (let j = 0; j < rowsLength; j++) {
-        if (matrix[j][i] === true) {
-          negativeColumns = false
-
-          break
-        }
-      }
-
-      if (negativeColumns === true) count++
-    }
-
-    return count
-  }
-
-  const expectedLength = expected.length
-  const actualLength = actual.length
-
-  if (expectedLength === 0) return true
-
-  const matrix = new Array(expectedLength)
-  for (let i = 0; i < expectedLength; i++) matrix[i] = new Array(actualLength)
-
-  for (let i = 0; i < expectedLength; i++) {
     const itemExpected = expected[i]
 
-    for (let j = 0; j < actualLength; j++) {
+    for (let j = 0; j < actual.length; j++) {
       const itemActual = actual[j]
 
-      matrix[i][j] = deepStrictEqualValue(itemActual, itemExpected, opts)
+      if (deepStrictEqualValue(itemActual, itemExpected, opts)) {
+        found = true
+
+        graph[i].push(j)
+      }
     }
+
+    if (found === false) return false
   }
 
-  if (actualLength > 5 && expectedLength > 5) {
-    if (actualLength - countNegativeColumns(matrix) < expectedLength) return false
-
-    matrix.sort(byWeight)
-  }
-
-  return containsPermutationMatrix(matrix)
+  return hopcroftKarp(graph)
 }
 
 // A key can be matched through a native `Map`/`Set` lookup only when it is a

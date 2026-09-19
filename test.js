@@ -478,6 +478,55 @@ test('deepStrictEqual, null prototype', (t) => {
   t.exception(() => assert.deepStrictEqual({}, Object.create(null), 'should fail'), /should fail/)
 })
 
+// Two prototypes that are not the same object are not the same prototype, even
+// where both lead back to one constructor. This is what the documented contract
+// asks for - "[[Prototype]] of objects are compared using the === operator" -
+// and Node's own implementation is looser than that, comparing `constructor`
+// and reaching for the prototype only as a fallback. These cases pass there and
+// must keep failing here; do not relax them to match it.
+test('deepStrictEqual, object, prototype, same constructor', (t) => {
+  class Foo {}
+
+  const descend = (prototype) => Object.create(Object.create(prototype))
+
+  t.exception(
+    () =>
+      assert.deepStrictEqual(Object.create(Foo.prototype), descend(Foo.prototype), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.deepStrictEqual({}, descend(Object.prototype), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.deepStrictEqual(descend(Object.prototype), descend(Object.prototype), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.deepStrictEqual(descend(Number.prototype), descend(Number.prototype), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.deepStrictEqual(
+        Object.assign(Object.create(Foo.prototype), { foo: 1 }),
+        Object.assign(descend(Foo.prototype), { foo: 1 }),
+        'should fail'
+      ),
+    /should fail/
+  )
+
+  t.execution(() => assert.deepStrictEqual(new Foo(), new Foo()))
+
+  // Partial equality compares the kind of a value rather than its prototype, so
+  // the same pair belongs together there.
+  t.execution(() =>
+    assert.partialDeepStrictEqual(Object.create(Foo.prototype), descend(Foo.prototype))
+  )
+})
+
 test('deepStrictEqual, regexp', (t) => {
   t.execution(() => assert.deepStrictEqual(/abc/, /abc/))
   t.exception(() => assert.deepStrictEqual(/abc/, /abc/g, 'should fail'), /should fail/)
@@ -2068,6 +2117,86 @@ test('partialDeepStrictEqual, boxed value, borrowed prototype and tag', (t) => {
 
     assert.partialDeepStrictEqual(subclassed, boxed(1))
   })
+})
+
+// Whether a value carries a boxed primitive is settled by the value itself, not
+// by which `valueOf` it happens to reach. An inherited one is no more its own
+// than a borrowed prototype is.
+test('partialDeepStrictEqual, boxed value, inherited valueOf', (t) => {
+  const boxed = (number) => Object.assign(new Number(number), { [Symbol.toStringTag]: 'Number' })
+
+  const inheriting = (number) => {
+    const prototype = Object.create(Number.prototype)
+
+    prototype.valueOf = () => number
+
+    const value = Object.create(prototype)
+
+    value[Symbol.toStringTag] = 'Number'
+
+    return value
+  }
+
+  t.exception(
+    () => assert.partialDeepStrictEqual(inheriting(1), boxed(1), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(boxed(1), inheriting(1), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual({ foo: inheriting(1) }, { foo: boxed(1) }, 'should fail'),
+    /should fail/
+  )
+
+  t.execution(() => assert.partialDeepStrictEqual(inheriting(1), inheriting(1)))
+  t.exception(
+    () => assert.partialDeepStrictEqual(inheriting(2), boxed(1), 'should fail'),
+    /should fail/
+  )
+})
+
+// A boxed value keeps its own `valueOf` from being consulted, so carrying one
+// changes nothing about the value it holds.
+test('partialDeepStrictEqual, boxed value, own valueOf', (t) => {
+  t.execution(() =>
+    assert.partialDeepStrictEqual(Object.assign(new Number(1), { valueOf: () => 1 }), new Number(1))
+  )
+
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        Object.assign(new Number(1), { valueOf: () => 1 }),
+        new Number(2),
+        'should fail'
+      ),
+    /should fail/
+  )
+})
+
+// Reading a value's `valueOf` is a side effect, and a value that holds no boxed
+// primitive has no reason to be asked for one.
+test('partialDeepStrictEqual, boxed value, valueOf is not consulted', (t) => {
+  let reads = 0
+
+  const prototype = Object.create(Number.prototype)
+
+  prototype.valueOf = () => {
+    reads++
+
+    return 1
+  }
+
+  const value = Object.create(prototype)
+
+  value[Symbol.toStringTag] = 'Number'
+
+  const boxed = Object.assign(new Number(1), { [Symbol.toStringTag]: 'Number' })
+
+  t.exception(() => assert.partialDeepStrictEqual(value, boxed, 'should fail'), /should fail/)
+
+  t.is(reads, 0)
 })
 
 // A boxed value stays one however far it is subclassed.

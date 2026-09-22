@@ -367,9 +367,9 @@ function deepStrictEqualShallow(actual, expected, actualType, expectedType, opts
     if (Object.getPrototypeOf(actual) !== Object.getPrototypeOf(expected)) return false
   }
 
-  if (isBoxedValue(actual) !== isBoxedValue(expected)) return false
+  if (isBoxedValue(actualType) !== isBoxedValue(expectedType)) return false
 
-  if (isBoxedValue(expected)) {
+  if (isBoxedValue(expectedType)) {
     if (!Object.is(actual.valueOf(), expected.valueOf())) return false
   }
 
@@ -620,33 +620,13 @@ function partialDeepStrictEqualBuffer(actual, expected) {
   return true
 }
 
-function isBoxedValue(value) {
-  const signature = Object.prototype.toString.call(value)
-
-  if (
-    signature !== '[object BigInt]' &&
-    signature !== '[object Boolean]' &&
-    signature !== '[object Number]' &&
-    signature !== '[object String]' &&
-    signature !== '[object Symbol]'
-  ) {
-    return false
-  }
-
-  try {
-    value.valueOf()
-  } catch {
-    return false
-  }
-
-  if (Object.hasOwn(value, 'valueOf')) return false
-
+function isBoxedValue(type) {
   return (
-    value instanceof BigInt ||
-    value instanceof Boolean ||
-    value instanceof Number ||
-    value instanceof String ||
-    value instanceof Symbol
+    type.isBooleanObject() ||
+    type.isNumberObject() ||
+    type.isStringObject() ||
+    type.isSymbolObject() ||
+    type.isBigIntObject()
   )
 }
 

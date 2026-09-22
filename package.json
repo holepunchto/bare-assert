@@ -31,7 +31,7 @@
   "homepage": "https://github.com/holepunchto/bare-assert#readme",
   "dependencies": {
     "bare-inspect": "^3.1.5",
-    "bare-type": "^1.1.0"
+    "bare-type": "^1.2.0"
   },
   "devDependencies": {
     "brittle": "^4.1.0",

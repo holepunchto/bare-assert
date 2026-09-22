@@ -1,5 +1,5 @@
 const inspect = require('bare-inspect')
-const getType = require('bare-type')
+const type = require('bare-type')
 const CycleDetection = require('./lib/cycle-detection')
 const hopcroftKarp = require('./lib/hopcroft-karp')
 
@@ -110,17 +110,17 @@ exports.doesNotMatch = function doesNotMatch(actual, regexp, message) {
 function assertError(actual, expected, opts = defaultDeepStrictOptions()) {
   if (expected === undefined) return true
 
-  const type = getType(expected)
+  const { REGEXP, ERROR, FUNCTION, OBJECT } = type.constants
 
-  if (type.isRegExp()) {
-    if (expected.test(actual)) return true
-  } else if (type.isFunction()) {
-    if (expected(actual) === true) return true
-    if (expected.prototype !== undefined && actual instanceof expected) return true
-  } else if (type.isError()) {
-    if (deepStrictEqualError(actual, expected, opts)) return true
-  } else if (type.isObject()) {
-    if (assertErrorObject(actual, expected, opts)) return true
+  switch (type.of(expected)) {
+    case REGEXP:
+      return expected.test(actual)
+    case ERROR:
+      return deepStrictEqualError(actual, expected, opts)
+    case FUNCTION:
+      return expected(actual) === true || (expected.prototype && actual instanceof expected)
+    case OBJECT:
+      return assertErrorObject(actual, expected, opts)
   }
 
   return false
@@ -136,7 +136,7 @@ function assertErrorObject(actual, expected, opts) {
     const actualValue = actual[key]
     const expectedValue = expected[key]
 
-    if (typeof actualValue === 'string' && getType(expectedValue).isRegExp()) {
+    if (typeof actualValue === 'string' && type(expectedValue).isRegExp()) {
       if (!expectedValue.test(actualValue)) return false
     } else {
       if (!deepStrictEqualValue(actualValue, expectedValue, opts)) return false
@@ -282,8 +282,8 @@ exports.partialDeepStrictEqual = function partialDeepStrictEqual(actual, expecte
 function deepStrictEqualValue(actual, expected, opts = defaultDeepStrictOptions()) {
   const { partial, cycleDetection } = opts
 
-  const actualType = getType(actual)
-  const expectedType = getType(expected)
+  const actualType = type(actual)
+  const expectedType = type(expected)
 
   if (!actualType.isObject() || !expectedType.isObject()) return Object.is(actual, expected)
   else if (actual === expected) return true
@@ -367,9 +367,9 @@ function deepStrictEqualShallow(actual, expected, actualType, expectedType, opts
     if (Object.getPrototypeOf(actual) !== Object.getPrototypeOf(expected)) return false
   }
 
-  if (isBoxedValue(actualType) !== isBoxedValue(expectedType)) return false
+  if (isBoxedValue(actual) !== isBoxedValue(expected)) return false
 
-  if (isBoxedValue(expectedType)) {
+  if (isBoxedValue(expected)) {
     if (!Object.is(actual.valueOf(), expected.valueOf())) return false
   }
 
@@ -385,29 +385,45 @@ function deepStrictEqualShallow(actual, expected, actualType, expectedType, opts
     if (!Object.is(actual.getTime(), expected.getTime())) return false
   }
 
-  if (partial === true) return partialDeepStrictEqualLength(actual, expected, actualType)
-  else return deepStrictEqualLength(actual, expected, actualType)
+  if (partial === true) return partialDeepStrictEqualLength(actual, expected)
+  else return deepStrictEqualLength(actual, expected)
 }
 
-function deepStrictEqualLength(actual, expected, type) {
-  if (type.isArguments() || type.isArray()) {
-    if (actual.length !== expected.length) return false
-  } else if (type.isMap() || type.isSet()) {
-    if (actual.size !== expected.size) return false
-  } else if (type.isSharedArrayBuffer()) {
-    if (actual.byteLength !== expected.byteLength) return false
+function deepStrictEqualLength(actual, expected) {
+  const { ARGUMENTS, ARRAY, MAP, SET, SHAREDARRAYBUFFER } = type.constants
+
+  switch (type.of(expected)) {
+    case ARGUMENTS:
+    case ARRAY:
+      if (actual.length !== expected.length) return false
+      break
+    case MAP:
+    case SET:
+      if (actual.size !== expected.size) return false
+      break
+    case SHAREDARRAYBUFFER:
+      if (actual.byteLength !== expected.byteLength) return false
+      break
   }
 
   return getEnumerableKeys(actual).length === getEnumerableKeys(expected).length
 }
 
-function partialDeepStrictEqualLength(actual, expected, type) {
-  if (type.isArguments() || type.isArray()) {
-    if (expected.length > actual.length) return false
-  } else if (type.isMap() || type.isSet()) {
-    if (expected.size > actual.size) return false
-  } else if (type.isSharedArrayBuffer()) {
-    if (expected.byteLength > actual.byteLength) return false
+function partialDeepStrictEqualLength(actual, expected) {
+  const { ARGUMENTS, ARRAY, MAP, SET, SHAREDARRAYBUFFER } = type.constants
+
+  switch (type.of(expected)) {
+    case ARGUMENTS:
+    case ARRAY:
+      if (expected.length > actual.length) return false
+      break
+    case MAP:
+    case SET:
+      if (expected.size > actual.size) return false
+      break
+    case SHAREDARRAYBUFFER:
+      if (expected.byteLength > actual.byteLength) return false
+      break
   }
 
   return getEnumerableKeys(actual).length >= getEnumerableKeys(expected).length
@@ -620,13 +636,12 @@ function partialDeepStrictEqualBuffer(actual, expected) {
   return true
 }
 
-function isBoxedValue(type) {
-  return (
-    type.isBooleanObject() ||
-    type.isNumberObject() ||
-    type.isStringObject() ||
-    type.isSymbolObject() ||
-    type.isBigIntObject()
+function isBoxedValue(value) {
+  const { BOOLEAN_OBJECT, NUMBER_OBJECT, STRING_OBJECT, SYMBOL_OBJECT, BIGINT_OBJECT } =
+    type.constants
+
+  return [BOOLEAN_OBJECT, NUMBER_OBJECT, STRING_OBJECT, SYMBOL_OBJECT, BIGINT_OBJECT].includes(
+    type.of(value)
   )
 }
 

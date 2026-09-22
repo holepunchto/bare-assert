@@ -3,6 +3,23 @@ const type = require('bare-type')
 const CycleDetection = require('./lib/cycle-detection')
 const hopcroftKarp = require('./lib/hopcroft-karp')
 
+const {
+  ARGUMENTS,
+  ARRAY,
+  BIGINT_OBJECT,
+  BOOLEAN_OBJECT,
+  ERROR,
+  FUNCTION,
+  MAP,
+  NUMBER_OBJECT,
+  OBJECT,
+  REGEXP,
+  SET,
+  SHAREDARRAYBUFFER,
+  STRING_OBJECT,
+  SYMBOL_OBJECT
+} = type.constants
+
 function defaultDeepStrictOptions() {
   return { partial: false, cycleDetection: new CycleDetection() }
 }
@@ -109,8 +126,6 @@ exports.doesNotMatch = function doesNotMatch(actual, regexp, message) {
 
 function assertError(actual, expected, opts = defaultDeepStrictOptions()) {
   if (expected === undefined) return true
-
-  const { REGEXP, ERROR, FUNCTION, OBJECT } = type.constants
 
   switch (type.of(expected)) {
     case REGEXP:
@@ -390,8 +405,6 @@ function deepStrictEqualShallow(actual, expected, actualType, expectedType, opts
 }
 
 function deepStrictEqualLength(actual, expected) {
-  const { ARGUMENTS, ARRAY, MAP, SET, SHAREDARRAYBUFFER } = type.constants
-
   switch (type.of(expected)) {
     case ARGUMENTS:
     case ARRAY:
@@ -410,8 +423,6 @@ function deepStrictEqualLength(actual, expected) {
 }
 
 function partialDeepStrictEqualLength(actual, expected) {
-  const { ARGUMENTS, ARRAY, MAP, SET, SHAREDARRAYBUFFER } = type.constants
-
   switch (type.of(expected)) {
     case ARGUMENTS:
     case ARRAY:
@@ -637,12 +648,16 @@ function partialDeepStrictEqualBuffer(actual, expected) {
 }
 
 function isBoxedValue(value) {
-  const { BOOLEAN_OBJECT, NUMBER_OBJECT, STRING_OBJECT, SYMBOL_OBJECT, BIGINT_OBJECT } =
-    type.constants
-
-  return [BOOLEAN_OBJECT, NUMBER_OBJECT, STRING_OBJECT, SYMBOL_OBJECT, BIGINT_OBJECT].includes(
-    type.of(value)
-  )
+  switch (type.of(value)) {
+    case BIGINT_OBJECT:
+    case BOOLEAN_OBJECT:
+    case NUMBER_OBJECT:
+    case STRING_OBJECT:
+    case SYMBOL_OBJECT:
+      return true
+    default:
+      return false
+  }
 }
 
 function getEnumerableKeys(obj) {

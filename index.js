@@ -127,15 +127,20 @@ exports.doesNotMatch = function doesNotMatch(actual, regexp, message) {
 function assertError(actual, expected, opts = defaultDeepStrictOptions()) {
   if (expected === undefined) return true
 
-  switch (type.of(expected)) {
-    case REGEXP:
-      return expected.test(actual)
-    case ERROR:
-      return deepStrictEqualError(actual, expected, opts)
-    case FUNCTION:
-      return expected(actual) === true || (expected.prototype && actual instanceof expected)
-    case OBJECT:
-      return assertErrorObject(actual, expected, opts)
+  const t = type(expected)
+
+  if (t.isRegExp()) {
+    if (expected.test(actual)) return true
+  } else if (t.isFunction()) {
+    try {
+      if (expected(actual) === true) return true
+    } catch {}
+
+    if (expected.prototype !== undefined && actual instanceof expected) return true
+  } else if (t.isError() || expected instanceof Error) {
+    if (deepStrictEqualError(actual, expected, opts)) return true
+  } else if (t.isObject()) {
+    if (assertErrorObject(actual, expected, opts)) return true
   }
 
   return false
@@ -373,11 +378,13 @@ function deepStrictEqualShallow(actual, expected, actualType, expectedType, opts
       if (actual[Symbol.toStringTag] !== expected[Symbol.toStringTag]) return false
     }
 
-    if (actualType.isDate() !== expectedType.isDate()) return false
-    if (actualType.isRegExp() !== expectedType.isRegExp()) return false
-    if (actualType.isError() !== expectedType.isError()) return false
-    if (actualType.isArray() !== expectedType.isArray()) return false
     if (actualType.isArguments() !== expectedType.isArguments()) return false
+    if (actualType.isArray() !== expectedType.isArray()) return false
+    if (actualType.isDate() !== expectedType.isDate()) return false
+    if (actualType.isError() !== expectedType.isError()) return false
+    if (actualType.isMap() !== expectedType.isMap()) return false
+    if (actualType.isRegExp() !== expectedType.isRegExp()) return false
+    if (actualType.isSet() !== expectedType.isSet()) return false
   } else {
     if (Object.getPrototypeOf(actual) !== Object.getPrototypeOf(expected)) return false
   }
@@ -385,7 +392,15 @@ function deepStrictEqualShallow(actual, expected, actualType, expectedType, opts
   if (isBoxedValue(actual) !== isBoxedValue(expected)) return false
 
   if (isBoxedValue(expected)) {
-    if (!Object.is(actual.valueOf(), expected.valueOf())) return false
+    if (!Object.is(parseBoxedValue(actual), parseBoxedValue(expected))) return false
+  }
+
+  if (!isPlainObject(expected)) {
+    if (actualType.isProxy() !== expectedType.isProxy()) return false
+  }
+
+  if (expectedType.isTypedArray()) {
+    if (type.of(actual) !== type.of(expected)) return false
   }
 
   if (expectedType.isRegExp()) {
@@ -660,6 +675,17 @@ function isBoxedValue(value) {
   }
 }
 
+function parseBoxedValue(value) {
+  switch (type.of(value)) {
+    case NUMBER_OBJECT:
+      return JSON.parse(value) || value.valueOf()
+    case STRING_OBJECT:
+      return value.toString()
+    default:
+      return value.valueOf()
+  }
+}
+
 function getEnumerableKeys(obj) {
   const keys = Object.keys(obj)
 
@@ -669,4 +695,8 @@ function getEnumerableKeys(obj) {
   }
 
   return keys
+}
+
+function isPlainObject(value) {
+  return type.of(value) === OBJECT
 }

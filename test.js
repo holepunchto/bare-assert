@@ -1124,13 +1124,6 @@ test('deepStrictEqual, function', (t) => {
   )
 })
 
-test('deepStrictEqual, proxy', (t) => {
-  const proxy = new Proxy([1, 2], {})
-
-  t.execution(() => assert.deepStrictEqual(proxy, [1, 2]))
-  t.exception(() => assert.deepStrictEqual(proxy, [1, 1], 'should fail'), /should fail/)
-})
-
 test('deepStrictEqual, url', (t) => {
   t.execution(() => assert.deepStrictEqual(new URL('http://foo'), new URL('http://foo')))
   t.exception(

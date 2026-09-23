@@ -2017,7 +2017,86 @@ test('partialDeepStrictEqual, proxy', (t) => {
     /should fail/
   )
 
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        new Proxy(new ArrayBuffer(2), {}),
+        new ArrayBuffer(2),
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        new Proxy(new Uint8Array([1]), {}),
+        new Uint8Array([1]),
+        'should fail'
+      ),
+    /should fail/
+  )
+
   t.execution(() => assert.partialDeepStrictEqual(new Proxy({ a: 1, b: 2 }, {}), { a: 1 }))
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      new Proxy(Object.assign(Object.create(null), { a: 1 }), {}),
+      Object.assign(Object.create(null), { a: 1 })
+    )
+  )
+})
+
+// Strict equality answers the same way: a proxy has no kind of its own, so it
+// stands apart from every value that does. Node agrees for all of these but
+// arrays, where `Array.isArray` recursing into the proxy's target leads it the
+// other way.
+test('deepStrictEqual, proxy', (t) => {
+  const args = (function () {
+    return arguments
+  })(1, 2)
+
+  const sameArgs = (function () {
+    return arguments
+  })(1, 2)
+
+  t.exception(
+    () => assert.deepStrictEqual(new Proxy([1, 2], {}), [1, 2], 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.deepStrictEqual(new Proxy(args, {}), sameArgs, 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.deepStrictEqual(
+        new Proxy(new Uint8Array([1, 2]), {}),
+        new Uint8Array([1, 2]),
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.deepStrictEqual(new Proxy(new ArrayBuffer(2), {}), new ArrayBuffer(2), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.deepStrictEqual(new Proxy(new Error('x'), {}), new Error('x'), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.deepStrictEqual(new Proxy(new Number(1), {}), new Number(1), 'should fail'),
+    /should fail/
+  )
+
+  t.execution(() => assert.deepStrictEqual(new Proxy({ a: 1 }, {}), { a: 1 }))
+  t.execution(() =>
+    assert.deepStrictEqual(
+      new Proxy(Object.assign(Object.create(null), { a: 1 }), {}),
+      Object.assign(Object.create(null), { a: 1 })
+    )
+  )
+  t.execution(() => assert.deepStrictEqual(new Proxy({ a: 1 }, {}), new Proxy({ a: 1 }, {})))
 })
 
 // Whichever answer a proxy gets, reaching it must not mean calling a method on
@@ -2068,6 +2147,10 @@ test('deepStrictEqual, proxy, unwrapped receiver', (t) => {
   )
   t.exception.all(
     () => assert.deepStrictEqual(new Proxy(new Date(0), {}), new Date(0), 'should fail'),
+    /should fail/
+  )
+  t.exception.all(
+    () => assert.deepStrictEqual(new Proxy(/a/, {}), /a/, 'should fail'),
     /should fail/
   )
 

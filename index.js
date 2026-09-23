@@ -614,19 +614,21 @@ function deepStrictEqualObject(actual, expected, opts, ignoreList = []) {
 }
 
 function partialDeepStrictEqualArray(actual, expected, opts, ignoreList = []) {
+  const actualKeys = Object.keys(actual).filter((key) => isNumericString(key))
+  const expectedKeys = Object.keys(expected).filter((key) => isNumericString(key))
+
   let j = -1
 
-  for (let i = 0; i < expected.length; i++) {
-    if (!(i in expected)) continue // Ignore hole in array
-
-    ignoreList.push(i.toString())
+  for (const expectedKey of expectedKeys) {
+    const expectedItem = expected[expectedKey]
 
     let found = false
 
-    while (++j < actual.length) {
-      if (!(j in actual)) continue // Ignore hole in array
+    while (++j < actualKeys.length) {
+      const actualKey = actualKeys[j]
+      const actualItem = actual[actualKey]
 
-      if (deepStrictEqualValue(actual[j], expected[i], opts)) {
+      if (deepStrictEqualValue(actualItem, expectedItem, opts)) {
         found = true
 
         break
@@ -635,6 +637,8 @@ function partialDeepStrictEqualArray(actual, expected, opts, ignoreList = []) {
 
     if (found === false) return false
   }
+
+  ignoreList.push(...expectedKeys)
 
   return true
 }
@@ -696,4 +700,8 @@ function getEnumerableKeys(obj) {
 
 function isPlainObject(value) {
   return type.of(value) === OBJECT
+}
+
+function isNumericString(value) {
+  return /^\d+$/.test(value)
 }

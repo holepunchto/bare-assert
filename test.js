@@ -234,6 +234,40 @@ test('throws, custom validation, object kinds', (t) => {
   )
 })
 
+// A constructor says what the error should be an instance of. It is not a
+// predicate, and a class cannot be called to find out.
+test('throws, custom validation, constructor', (t) => {
+  class Boom extends Error {}
+
+  function Legacy(message) {
+    this.message = message
+  }
+
+  Legacy.prototype = Object.create(Error.prototype)
+
+  const throwing = (err) => () => {
+    throw err
+  }
+
+  t.execution(() => assert.throws(throwing(new Boom('boom')), Boom))
+  t.execution(() => assert.throws(throwing(new TypeError('boom')), TypeError))
+  t.execution(() => assert.throws(throwing(new Legacy('boom')), Legacy))
+  t.execution(() => assert.doesNotThrow(() => {}, Boom))
+
+  t.exception.all(
+    () => assert.throws(throwing(new TypeError('boom')), Boom, 'should fail'),
+    /should fail/
+  )
+})
+
+test('rejects, custom validation, constructor', async (t) => {
+  t.plan(1)
+
+  class Boom extends Error {}
+
+  await t.execution(assert.rejects(() => Promise.reject(new Boom('boom')), Boom))
+})
+
 test('rejects, custom validation, object kinds', async (t) => {
   t.plan(1)
 
@@ -1960,6 +1994,132 @@ test('partialDeepStrictEqual, prototype, forged container tag', (t) => {
   )
   t.exception(
     () => assert.partialDeepStrictEqual({ [Symbol.toStringTag]: 'Array' }, [], 'should fail'),
+    /should fail/
+  )
+})
+
+// A proxy is a proxy, whatever it wraps. Node reaches a different answer for
+// arrays alone, because `Array.isArray` is specified to recurse through a
+// proxy's target while every other kind is decided from an internal slot on the
+// value itself; that inconsistency is not worth reproducing.
+test('partialDeepStrictEqual, proxy', (t) => {
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Proxy([1, 2, 3], {}), [1, 3], 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual([1, 2, 3], new Proxy([1, 3], {}), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(new Proxy([1, 2, 3], {}), new Proxy([1, 3], {}), 'should fail'),
+    /should fail/
+  )
+
+  t.execution(() => assert.partialDeepStrictEqual(new Proxy({ a: 1, b: 2 }, {}), { a: 1 }))
+})
+
+// Whichever answer a proxy gets, reaching it must not mean calling a method on
+// a receiver that cannot accept it.
+test('partialDeepStrictEqual, proxy, unwrapped receiver', (t) => {
+  t.exception.all(
+    () =>
+      assert.partialDeepStrictEqual(
+        new Proxy(new Map([['a', 1]]), {}),
+        new Map([['a', 1]]),
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception.all(
+    () =>
+      assert.partialDeepStrictEqual(
+        new Map([['a', 1]]),
+        new Proxy(new Map([['a', 1]]), {}),
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception.all(
+    () =>
+      assert.partialDeepStrictEqual(new Proxy(new Set([1, 2]), {}), new Set([1]), 'should fail'),
+    /should fail/
+  )
+  t.exception.all(
+    () => assert.partialDeepStrictEqual(new Proxy(new Date(0), {}), new Date(0), 'should fail'),
+    /should fail/
+  )
+})
+
+test('deepStrictEqual, proxy, unwrapped receiver', (t) => {
+  t.exception.all(
+    () =>
+      assert.deepStrictEqual(
+        new Proxy(new Map([['a', 1]]), {}),
+        new Map([['a', 1]]),
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception.all(
+    () => assert.deepStrictEqual(new Proxy(new Set([1]), {}), new Set([1]), 'should fail'),
+    /should fail/
+  )
+  t.exception.all(
+    () => assert.deepStrictEqual(new Proxy(new Date(0), {}), new Date(0), 'should fail'),
+    /should fail/
+  )
+
+  t.execution(() => assert.deepStrictEqual(new Proxy({ a: 1 }, {}), { a: 1 }))
+})
+
+// Subclassing does not change what kind a value is, so the checks that turn on
+// kind still reach it.
+test('partialDeepStrictEqual, subclassed kinds', (t) => {
+  class List extends Array {}
+
+  class Dict extends Map {}
+
+  class Bag extends Set {}
+
+  class Pattern extends RegExp {}
+
+  class Boom extends Error {}
+
+  t.execution(() => assert.partialDeepStrictEqual(List.from([1, 2, 3]), List.from([1, 3])))
+  t.execution(() =>
+    assert.throws(
+      () => {
+        throw Object.assign(new Boom('boom'), { code: 7 })
+      },
+      Object.assign(new Boom('boom'), { code: 7 })
+    )
+  )
+  t.execution(() =>
+    assert.throws(() => {
+      throw new Error('boom')
+    }, new Pattern('boom'))
+  )
+
+  t.exception(
+    () => assert.partialDeepStrictEqual(List.from([1, 2]), List.from([1, 2, 3]), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual(
+        new Dict([['a', 1]]),
+        new Dict([
+          ['a', 1],
+          ['b', 2]
+        ]),
+        'should fail'
+      ),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Bag([1]), new Bag([1, 2]), 'should fail'),
     /should fail/
   )
 })

@@ -260,6 +260,27 @@ test('throws, custom validation, constructor', (t) => {
   )
 })
 
+// A validator that throws has not judged anything, and its error is what the
+// caller needs to see.
+test('throws, custom validation, throwing validator', (t) => {
+  const thrown = () => {
+    throw new Error('boom')
+  }
+
+  const blowUp = () => {
+    throw new Error('validator blew up')
+  }
+
+  t.exception(() => assert.throws(thrown, blowUp), /validator blew up/)
+  t.exception(() => assert.doesNotThrow(thrown, blowUp), /validator blew up/)
+
+  t.execution(() => assert.throws(thrown, (err) => err.message === 'boom'))
+  t.exception(
+    () => assert.throws(thrown, (err) => err.message === 'other', 'should fail'),
+    /should fail/
+  )
+})
+
 test('rejects, custom validation, constructor', async (t) => {
   t.plan(1)
 
@@ -2030,6 +2051,13 @@ test('partialDeepStrictEqual, proxy', (t) => {
   )
 
   t.execution(() => assert.partialDeepStrictEqual(new Proxy({ a: 1, b: 2 }, {}), { a: 1 }))
+  t.execution(() => assert.partialDeepStrictEqual({ a: 1, b: 2 }, new Proxy({ a: 1 }, {})))
+  t.execution(() =>
+    assert.partialDeepStrictEqual(
+      Object.assign(Object.create(null), { a: 1 }),
+      new Proxy(Object.assign(Object.create(null), { a: 1 }), {})
+    )
+  )
   t.execution(() =>
     assert.partialDeepStrictEqual(
       new Proxy(Object.assign(Object.create(null), { a: 1 }), {}),
@@ -2083,6 +2111,7 @@ test('deepStrictEqual, proxy', (t) => {
   )
 
   t.execution(() => assert.deepStrictEqual(new Proxy({ a: 1 }, {}), { a: 1 }))
+  t.execution(() => assert.deepStrictEqual({ a: 1 }, new Proxy({ a: 1 }, {})))
   t.execution(() =>
     assert.deepStrictEqual(
       new Proxy(Object.assign(Object.create(null), { a: 1 }), {}),
@@ -2497,6 +2526,50 @@ test('partialDeepStrictEqual, boxed value, own valueOf', (t) => {
 // Overriding `valueOf` does not change which primitive a box holds, so the
 // comparison reads it through the intrinsic for the type and never calls the
 // override at all.
+// The primitive a box holds is read from the box, not from a rendering of it,
+// so values no JSON document can carry are read like any other.
+test('partialDeepStrictEqual, boxed value, unrepresentable', (t) => {
+  t.execution(() => assert.partialDeepStrictEqual(new Number(NaN), new Number(NaN)))
+  t.execution(() => assert.partialDeepStrictEqual(new Number(Infinity), new Number(Infinity)))
+  t.execution(() => assert.partialDeepStrictEqual(new Number(-Infinity), new Number(-Infinity)))
+  t.execution(() => assert.partialDeepStrictEqual(new Number(1e400), new Number(1e400)))
+  t.execution(() => assert.deepStrictEqual(new Number(NaN), new Number(NaN)))
+
+  t.exception.all(
+    () => assert.partialDeepStrictEqual(new Number(NaN), new Number(1), 'should fail'),
+    /should fail/
+  )
+
+  t.execution(() => assert.partialDeepStrictEqual(new Number(0), new Number(0)))
+  t.exception(
+    () => assert.partialDeepStrictEqual(new Number(-0), new Number(0), 'should fail'),
+    /should fail/
+  )
+})
+
+// `toString` is no more the box's own account of itself than `valueOf` is.
+test('partialDeepStrictEqual, boxed value, overridden toString', (t) => {
+  t.execution(() => {
+    const value = new Number(1)
+
+    value.toString = () => '99'
+
+    assert.partialDeepStrictEqual(value, new Number(1))
+  })
+  t.execution(() => {
+    const value = new String('ab')
+
+    value.toString = () => 'zz'
+
+    assert.partialDeepStrictEqual(value, new String('ab'))
+  })
+
+  t.exception(
+    () => assert.partialDeepStrictEqual(new String('ab'), new String('zz'), 'should fail'),
+    /should fail/
+  )
+})
+
 test('partialDeepStrictEqual, boxed value, overridden valueOf', (t) => {
   t.execution(() =>
     assert.partialDeepStrictEqual(
@@ -3355,6 +3428,33 @@ test('partialDeepStrictEqual, array, non-index keys', (t) => {
       Object.assign([1], { '01': 5 })
     )
   )
+
+  // Values the actual array does hold, so reading the key as an element finds a
+  // match where reading it as the property it is does not.
+  t.exception(
+    () => assert.partialDeepStrictEqual([1, 2, 3], Object.assign([], { '01': 2 }), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual([1, 2, 3], Object.assign([], { '00': 2 }), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual([1, 2, 3], Object.assign([], { 4294967295: 2 }), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () =>
+      assert.partialDeepStrictEqual([1, 2, 3], Object.assign([], { 4294967296: 2 }), 'should fail'),
+    /should fail/
+  )
+  t.exception(
+    () => assert.partialDeepStrictEqual([1, 2, 3], Object.assign([], { foo: 2 }), 'should fail'),
+    /should fail/
+  )
+
+  t.execution(() => assert.partialDeepStrictEqual([1, 2, 3], Object.assign([], { 0: 2 })))
 })
 
 test('partialDeepStrictEqual, SharedArrayBuffer', (t) => {

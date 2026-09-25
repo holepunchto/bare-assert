@@ -122,25 +122,27 @@ exports.doesNotMatch = function doesNotMatch(actual, regexp, message) {
 }
 
 function assertError(actual, expected, opts = defaultDeepStrictOptions()) {
-  if (expected === undefined) return true
+  if (expected === undefined) return [true, undefined]
 
   const t = type(expected)
 
   if (t.isRegExp()) {
-    if (expected.test(actual)) return true
+    if (expected.test(actual)) return [true, undefined]
   } else if (t.isFunction()) {
-    try {
-      if (expected(actual) === true) return true
-    } catch {}
+    if (expected.prototype !== undefined && actual instanceof expected) return [true, undefined]
 
-    if (expected.prototype !== undefined && actual instanceof expected) return true
+    try {
+      if (expected(actual) === true) return [true, null]
+    } catch (err) {
+      return [false, err.message]
+    }
   } else if (t.isError() || expected instanceof Error) {
-    if (deepStrictEqualError(actual, expected, opts)) return true
+    if (deepStrictEqualError(actual, expected, opts)) return [true, undefined]
   } else if (t.isObject()) {
-    if (assertErrorObject(actual, expected, opts)) return true
+    if (assertErrorObject(actual, expected, opts)) return [true, undefined]
   }
 
-  return false
+  return [false, undefined]
 }
 
 function assertErrorObject(actual, expected, opts) {
@@ -184,7 +186,11 @@ exports.throws = function throws(fn, error, message) {
     assertFail({ message, operator: 'throws' }, throws)
   }
 
-  if (assertError(actual, error)) return
+  const [result, errorMessage] = assertError(actual, error)
+
+  if (result === true) return
+
+  if (errorMessage && message === undefined) message = errorMessage
 
   assertFail({ message, actual, expected: error, operator: 'throws' }, throws)
 }
@@ -206,7 +212,12 @@ exports.doesNotThrow = function doesNotThrow(fn, error, message) {
 
   if (actual === noException) return
 
-  if (!assertError(actual, error)) throw actual
+  const [result, errorMessage] = assertError(actual, error)
+
+  if (result === false && message === undefined) {
+    if (errorMessage) message = errorMessage
+    else throw actual
+  }
 
   assertFail({ message, actual, expected: error, operator: 'doesNotThrow' }, doesNotThrow)
 }
@@ -235,7 +246,11 @@ exports.rejects = async function rejects(fn, error, message) {
     assertFail({ message, operator: 'rejects' }, rejects)
   }
 
-  if (assertError(actual, error)) return
+  const [result, errorMessage] = assertError(actual, error)
+
+  if (result === true) return
+
+  if (errorMessage && message === undefined) message = errorMessage
 
   assertFail({ message, actual, expected: error, operator: 'rejects' }, rejects)
 }
@@ -260,7 +275,12 @@ exports.doesNotReject = async function doesNotReject(fn, error, message) {
 
   if (actual === noException) return
 
-  if (!assertError(actual, error)) throw actual
+  const [result, errorMessage] = assertError(actual, error)
+
+  if (result === false) {
+    if (errorMessage && message === undefined) message = errorMessage
+    else throw actual
+  }
 
   assertFail({ message, actual, expected: error, operator: 'doesNotReject' }, doesNotReject)
 }
@@ -392,8 +412,13 @@ function deepStrictEqualShallow(actual, expected, actualType, expectedType, opts
     if (!Object.is(parseBoxedValue(actual), parseBoxedValue(expected))) return false
   }
 
-  if (!isPlainObject(expected)) {
-    if (actualType.isProxy() !== expectedType.isProxy()) return false
+  if (actualType.isProxy() || expectedType.isProxy()) {
+    if (
+      (actualType.isProxy() || isPlainObject(actual)) !==
+      (expectedType.isProxy() || isPlainObject(expected))
+    ) {
+      return false
+    }
   }
 
   if (expectedType.isTypedArray()) {
@@ -614,8 +639,8 @@ function deepStrictEqualObject(actual, expected, opts, ignoreList = []) {
 }
 
 function partialDeepStrictEqualArray(actual, expected, opts, ignoreList = []) {
-  const actualKeys = Object.keys(actual).filter((key) => isNumericString(key))
-  const expectedKeys = Object.keys(expected).filter((key) => isNumericString(key))
+  const actualKeys = Object.keys(actual).filter((key) => isArrayIndex(key))
+  const expectedKeys = Object.keys(expected).filter((key) => isArrayIndex(key))
 
   let j = -1
 
@@ -678,12 +703,16 @@ function isBoxedValue(value) {
 
 function parseBoxedValue(value) {
   switch (type.of(value)) {
+    case BIGINT_OBJECT:
+      return BigInt.prototype.valueOf.call(value)
+    case BOOLEAN_OBJECT:
+      return Boolean.prototype.valueOf.call(value)
     case NUMBER_OBJECT:
-      return JSON.parse(value) || value.valueOf()
+      return Number.prototype.valueOf.call(value)
     case STRING_OBJECT:
-      return value.toString()
+      return String.prototype.valueOf.call(value)
     default:
-      return value.valueOf()
+      return Symbol.prototype.valueOf.call(value)
   }
 }
 
@@ -702,6 +731,10 @@ function isPlainObject(value) {
   return type.of(value) === OBJECT
 }
 
-function isNumericString(value) {
-  return /^\d+$/.test(value)
+function isArrayIndex(str) {
+  if (!/^\d+$/.test(str)) return false
+  if (str.startsWith('0') && str !== '0') return false
+  if (Number(str) > 2 ** 32 - 2) return false
+
+  return true
 }

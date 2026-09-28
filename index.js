@@ -18,7 +18,7 @@ const {
 } = type.constants
 
 function defaultDeepStrictOptions() {
-  return { partial: false, cycleDetection: new CycleDetection() }
+  return { partial: false, cycleDetection: new CycleDetection(), keys: new WeakMap() }
 }
 
 class AssertionError extends Error {
@@ -146,8 +146,8 @@ function assertError(actual, expected, opts = defaultDeepStrictOptions()) {
 }
 
 function assertErrorObject(actual, expected, opts) {
-  const actualKeys = ['name', 'message', ...getEnumerableKeys(actual)]
-  const expectedKeys = getEnumerableKeys(expected)
+  const actualKeys = ['name', 'message', ...getEnumerableKeys(actual, opts)]
+  const expectedKeys = getEnumerableKeys(expected, opts)
 
   for (const key of expectedKeys) {
     if (!actualKeys.includes(key)) return false
@@ -437,11 +437,11 @@ function deepStrictEqualShallow(actual, expected, actualType, expectedType, opts
     if (!Object.is(actual.getTime(), expected.getTime())) return false
   }
 
-  if (partial === true) return partialDeepStrictEqualLength(actual, expected)
-  else return deepStrictEqualLength(actual, expected)
+  if (partial === true) return partialDeepStrictEqualLength(actual, expected, opts)
+  else return deepStrictEqualLength(actual, expected, opts)
 }
 
-function deepStrictEqualLength(actual, expected) {
+function deepStrictEqualLength(actual, expected, opts) {
   switch (type.of(expected)) {
     case ARGUMENTS:
     case ARRAY:
@@ -456,10 +456,10 @@ function deepStrictEqualLength(actual, expected) {
       break
   }
 
-  return getEnumerableKeys(actual).length === getEnumerableKeys(expected).length
+  return getEnumerableKeys(actual, opts).length === getEnumerableKeys(expected, opts).length
 }
 
-function partialDeepStrictEqualLength(actual, expected) {
+function partialDeepStrictEqualLength(actual, expected, opts) {
   switch (type.of(expected)) {
     case ARGUMENTS:
     case ARRAY:
@@ -474,7 +474,7 @@ function partialDeepStrictEqualLength(actual, expected) {
       break
   }
 
-  return getEnumerableKeys(actual).length >= getEnumerableKeys(expected).length
+  return getEnumerableKeys(actual, opts).length >= getEnumerableKeys(expected, opts).length
 }
 
 function deepStrictEqualBuffer(actual, expected, opts) {
@@ -622,8 +622,8 @@ function deepStrictEqualSet(actual, expected, opts) {
 
 // The key counts have already been compared, so only the values are left.
 function deepStrictEqualObject(actual, expected, opts, ignoreList = []) {
-  const actualKeys = getEnumerableKeys(actual)
-  const expectedKeys = getEnumerableKeys(expected)
+  const actualKeys = getEnumerableKeys(actual, opts)
+  const expectedKeys = getEnumerableKeys(expected, opts)
 
   const hasIgnoreList = ignoreList.length > 0
 
@@ -639,8 +639,8 @@ function deepStrictEqualObject(actual, expected, opts, ignoreList = []) {
 }
 
 function partialDeepStrictEqualArray(actual, expected, opts, ignoreList = []) {
-  const actualKeys = Object.keys(actual).filter((key) => isArrayIndex(key))
-  const expectedKeys = Object.keys(expected).filter((key) => isArrayIndex(key))
+  const actualKeys = getEnumerableKeys(actual, opts).filter(isArrayIndex)
+  const expectedKeys = getEnumerableKeys(expected, opts).filter(isArrayIndex)
 
   let j = -1
 
@@ -716,13 +716,25 @@ function parseBoxedValue(value) {
   }
 }
 
-function getEnumerableKeys(obj) {
+// Listing the keys of a sparse array walks its whole length, so a comparison
+// that asks more than once pays for it again each time.
+function getEnumerableKeys(obj, opts) {
+  const cache = opts && opts.keys
+
+  if (cache !== undefined) {
+    const cached = cache.get(obj)
+
+    if (cached !== undefined) return cached
+  }
+
   const keys = Object.keys(obj)
 
   for (const symbolKey of Object.getOwnPropertySymbols(obj)) {
     const { enumerable } = Object.getOwnPropertyDescriptor(obj, symbolKey)
     if (enumerable) keys.push(symbolKey)
   }
+
+  if (cache !== undefined) cache.set(obj, keys)
 
   return keys
 }
@@ -732,6 +744,7 @@ function isPlainObject(value) {
 }
 
 function isArrayIndex(str) {
+  if (typeof str !== 'string') return false
   if (!/^\d+$/.test(str)) return false
   if (str.startsWith('0') && str !== '0') return false
   if (Number(str) > 2 ** 32 - 2) return false
